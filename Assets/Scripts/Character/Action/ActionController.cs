@@ -8,6 +8,16 @@ using UnityEngine;
 /// </summary>
 public class ActionController : MonoBehaviour
 {
+    public PlayableAnimationPlayer playablePlayer { get; private set; }
+
+    private void Awake()
+    {
+        playablePlayer = GetComponent<PlayableAnimationPlayer>();
+        if (playablePlayer == null)
+            playablePlayer = gameObject.AddComponent<PlayableAnimationPlayer>();
+        playablePlayer.Initialize(anim);
+    }
+
     /// <summary>
     /// 角色的animator，要通过这个来播放角色动作的
     /// </summary>
@@ -100,25 +110,30 @@ public class ActionController : MonoBehaviour
     private float _pec = 0;
     
     /// <summary>
-    /// 之所以我们都用Update而不是Fixed，因为我们要依赖的核心是Input和Animator
-    /// 用Update做动作游戏会有很多问题，比如跳过了可以Cancel的帧
-    /// 但是无奈，毕竟用了unity
+    /// 60Hz 逻辑 Tick，更新动作状态与切换逻辑
     /// </summary>
-    private void Update()
+    public void LogicTick(float delta)
     {
-        float delta = Time.deltaTime;
         //没有动画就不会工作
         if (AllActions.Count <= 0) return;
         
-        //根据硬直来调整倍率
-        anim.speed = Freezing ? 0 : 1;
+        //扣减硬直时间
         if (_freezing > 0) _freezing -= delta;
         
-        //因为动作融合，所以我们优先取下一个动作的normalized当做百分比进度
-        AnimatorStateInfo asInfo = anim.GetCurrentAnimatorStateInfo(0);
-        AnimatorStateInfo nextStateInfo = anim.GetNextAnimatorStateInfo(0);
-        //获得现在的百分比时间，因为会大于等于100%（你敢信，这就是Unity这个愚蠢做法的无奈之处）所以要clamp一下
-        _pec = Mathf.Clamp01(nextStateInfo.length > 0 ? nextStateInfo.normalizedTime : asInfo.normalizedTime);
+        // 手动计算百分比进度，如果处于顿帧状态则不推进时间
+        float length = playablePlayer.GetClipLength(CurrentAction.animKey);
+        if (length > 0)
+        {
+            if (!Freezing)
+            {
+                _pec += delta / length;
+                _pec = Mathf.Clamp01(_pec);
+            }
+        }
+        else
+        {
+            _pec = 1.0f;
+        }
         
         //算一下攻击盒跟受击盒
         CalculateBoxInfo(_wasPercentage, _pec);
@@ -132,12 +147,8 @@ public class ActionController : MonoBehaviour
             Vector3 rmThisTick = RootMotionMethod.Methods[_rootMotion.method](_pec, _rootMotion.param);
             Vector3 rmLastTick = RootMotionMethod.Methods[_rootMotion.method](_wasPercentage, _rootMotion.param);
             RootMotionMove = rmThisTick - rmLastTick;
-            //Debug.Log("RootMotion distance " + RootMotionMove + "=>" + pec + " - " + _wasPercentage);
         }else RootMotionMove = Vector3.zero;
         
-        //动作是否要更换了，最终我们为了偷懒，而妥协了引擎的依赖于动画的思路了
-        //当然，这只是因为这是个demo，如果正式开发游戏，就要斟酌一下，毕竟自己写一个，可以手感提高不少
-        //但是手感的提高，玩家是未必能体验出来的
         //开始观察每个动作，如果他们可以cancel当前动作，并且操作存在，那么就会添加到预约列表里面
         foreach (ActionInfo action in AllActions)
         {
@@ -171,6 +182,9 @@ public class ActionController : MonoBehaviour
         
         //清理一下预约列表
         _preorderActions.Clear();
+
+        //同步进度给 PlayablePlayer
+        playablePlayer.SetPec(_pec);
     }
 
     /// <summary>
@@ -316,7 +330,7 @@ public class ActionController : MonoBehaviour
             command.CleanNonDirectionInputs();
             
             _onChangeAction?.Invoke(CurrentAction, aInfo);
-            anim.CrossFade(aInfo.animKey, transitionNormalized, 0, fromNormalized);
+            playablePlayer.PlayClip(aInfo.animKey, transitionNormalized, fromNormalized);
             CurrentAction = aInfo;
             //默认的cancelTag都可以加上
             CurrentBeCancelledTag.Clear();
@@ -335,6 +349,7 @@ public class ActionController : MonoBehaviour
             _rootMotion = aInfo.rootMotionTween;
             
             _wasPercentage = fromNormalized;
+            _pec = fromNormalized;
             //顺便修一下面向
             transform.eulerAngles = new Vector3(0, command.inversed ? 270 : 90, 0);
             //修正完毕才接受新的是否要转向，因为可能这个动作本身自带转向
@@ -352,7 +367,9 @@ public class ActionController : MonoBehaviour
     {
         if (currentNormalized >= 1)
         {
-            anim.CrossFade(CurrentAction.animKey, 0, 0, 0);
+            playablePlayer.PlayClip(CurrentAction.animKey, 0, 0);
+            _pec = 0;
+            _wasPercentage = 0;
         }
             
     }
@@ -466,7 +483,6 @@ public class ActionController : MonoBehaviour
         float maxFreezing = 0.5f;   //卡帧、硬直上限
         float addRate = Mathf.Clamp(maxFreezing - _freezing, 0, maxFreezing) / maxFreezing;
         _freezing += freezingSec * addRate;
-        anim.speed = Freezing ? 0 : 1;
     }
 
     /// <summary>

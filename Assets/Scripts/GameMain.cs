@@ -23,6 +23,13 @@ public class GameMain : MonoBehaviour
     
     void Awake()
     {
+        // 自动创建全局时钟，保障重构完就能无缝运行
+        if (FindObjectOfType<TickManager>() == null)
+        {
+            GameObject tmObj = new GameObject("TickManager");
+            tmObj.AddComponent<TickManager>();
+        }
+
         //就暂时写在这里读取吧，demo自然就偷懒了
         GameData.Load();
         //同样是偷懒，把数据全塞给角色
@@ -35,9 +42,15 @@ public class GameMain : MonoBehaviour
 
     private void Update()
     {
-        float dt = Time.deltaTime;
-        //处理攻击和碰撞
-        DealWithAttacks();
+        //UI简单处理 (依然保留在 Update 里，因为是表现层)
+        inputText.text = player.input.InputText();
+    }
+
+    /// <summary>
+    /// 定频逻辑更新移动，由 TickManager 驱动
+    /// </summary>
+    public void TickMovements(float dt)
+    {
         //先处理角色的移动，这里没有地形，所以y<0就是falling了
         Transform pTrans = player.transform;
         Vector3 pWas = pTrans.position;
@@ -61,10 +74,14 @@ public class GameMain : MonoBehaviour
                 eWas.z + eMoved.z
             );
         }
-        
-        
-        //UI简单处理
-        inputText.text = player.input.InputText();
+    }
+
+    /// <summary>
+    /// 定频逻辑更新攻击与碰撞，由 TickManager 驱动
+    /// </summary>
+    public void DealWithAttacksInTick()
+    {
+        DealWithAttacks();
     }
 
     private void LateUpdate()

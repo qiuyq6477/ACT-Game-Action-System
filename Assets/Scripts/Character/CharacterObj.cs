@@ -119,9 +119,8 @@ public class CharacterObj : MonoBehaviour
         }
     }
 
-    private void Update()
+    public void CharacterLogicTick(float delta)
     {
-        float delta = Time.deltaTime;
         //以下内容只有不在硬直才会执行
         if (!action.Freezing)
         {
@@ -129,7 +128,6 @@ public class CharacterObj : MonoBehaviour
             foreach (HitRecord record in HitRecords)
                 record.Update(delta);
         }
-        
     }
 
     /// <summary>

@@ -53,9 +53,8 @@ public class InputToCommand : MonoBehaviour
     /// 其实也不是没有动作游戏采取这种“Turbo输入”的
     /// 没有holding和tap，用这种"Turbo输入"的结果就是一些手感会变差，比如移动，还有蓄力，但不是做不了，得凑
     /// </summary>
-    private void Update()
+    public void InputTick(float dt)
     {
-        float dt = Time.deltaTime;
         //开始去掉已经过期的操作记录
         int index = 0;
         while (index < _input.Count)
@@ -124,7 +123,7 @@ public class InputToCommand : MonoBehaviour
         }
         
         //计数器
-        _timeStamp += Time.deltaTime;
+        _timeStamp += dt;
     }
 
     private void AddInput(KeyMap key)
