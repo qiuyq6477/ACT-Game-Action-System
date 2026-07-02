@@ -50,14 +50,14 @@ public class ActionController : MonoBehaviour
     private List<PreorderActionInfo> _preorderActions = new List<PreorderActionInfo>();
 
     /// <summary>
-    /// 这个动作在上一个update经历了多少百分比了
+    /// 这个动作在上一个 Tick 经历了多少逻辑帧
     /// </summary>
-    private float _wasPercentage = 0;
+    private int _lastFrame = 0;
 
     /// <summary>
     /// 当前动作的RootMotion方法
     /// 参数float：当前动作进行到的百分比
-    /// 参数string[]：配置在ActionInfo表里actionInfo.rootMotionTween的param部分
+    /// 参数string[]：配置在ActionInfo表里actionInfo.rootMotionTween`的param部分
     /// 返回值：Vector3，偏移量，假设起始的时候坐标为zero，到normalized==参数float的时候，当时的偏移值
     /// </summary>
     private ScriptMethodInfo _rootMotion = new ScriptMethodInfo();
@@ -104,10 +104,9 @@ public class ActionController : MonoBehaviour
     private Action<ActionInfo, ActionInfo> _onChangeAction = null;
 
     /// <summary>
-    /// 当前动画百分比，放这里方便些，其实最好放一个函数里
-    /// 但是因为要访问动画百分比的频率较高，不如就一次性了
+    /// 当前动作已播放的逻辑帧数
     /// </summary>
-    private float _pec = 0;
+    private int _curFrame = 0;
     
     /// <summary>
     /// 60Hz 逻辑 Tick，更新动作状态与切换逻辑
@@ -120,53 +119,57 @@ public class ActionController : MonoBehaviour
         //扣减硬直时间
         if (_freezing > 0) _freezing -= delta;
         
-        // 手动计算百分比进度，如果处于顿帧状态则不推进时间
-        float length = playablePlayer.GetClipLength(CurrentAction.animKey);
-        if (length > 0)
+        // 手动递增当前逻辑帧
+        _lastFrame = _curFrame;
+        if (!Freezing)
         {
-            if (!Freezing)
+            _curFrame++;
+            if (_curFrame > CurrentAction.maxFrames)
             {
-                _pec += delta / length;
-                _pec = Mathf.Clamp01(_pec);
+                _curFrame = CurrentAction.maxFrames;
             }
         }
-        else
-        {
-            _pec = 1.0f;
-        }
+        
+        // 转换为百分比，仅用于表现层动画采样和部分插值位移
+        float pec = CurrentAction.maxFrames > 0 ? Mathf.Clamp01((float)_curFrame / CurrentAction.maxFrames) : 1f;
+        float wasPec = CurrentAction.maxFrames > 0 ? Mathf.Clamp01((float)_lastFrame / CurrentAction.maxFrames) : 0f;
         
         //算一下攻击盒跟受击盒
-        CalculateBoxInfo(_wasPercentage, _pec);
+        CalculateBoxInfo(_lastFrame, _curFrame);
         
         //移动输入接受
-        CalculateInputAcceptance(_wasPercentage, _pec);
+        CalculateInputAcceptance(_lastFrame, _curFrame);
         
         //算一下2帧之间的RootMotion变化
         if (!String.IsNullOrEmpty(_rootMotion.method) && RootMotionMethod.Methods.ContainsKey(_rootMotion.method))
         {
-            Vector3 rmThisTick = RootMotionMethod.Methods[_rootMotion.method](_pec, _rootMotion.param);
-            Vector3 rmLastTick = RootMotionMethod.Methods[_rootMotion.method](_wasPercentage, _rootMotion.param);
+            Vector3 rmThisTick = RootMotionMethod.Methods[_rootMotion.method](pec, _rootMotion.param);
+            Vector3 rmLastTick = RootMotionMethod.Methods[_rootMotion.method](wasPec, _rootMotion.param);
             RootMotionMove = rmThisTick - rmLastTick;
         }else RootMotionMove = Vector3.zero;
         
         //开始观察每个动作，如果他们可以cancel当前动作，并且操作存在，那么就会添加到预约列表里面
         foreach (ActionInfo action in AllActions)
         {
-            if (CanActionCancelCurrent(action, _pec, true, out BeCancelledTag bcTag, out CancelTag cancelTag))
+            if (CanActionCancelCurrent(action, _curFrame, true, out BeCancelledTag bcTag, out CancelTag cancelTag))
             {
+                float targetLength = playablePlayer.GetClipLength(action.animKey);
+                int targetMax = Mathf.RoundToInt(targetLength * 60f);
+                float fromNormalized = targetMax > 0 ? (float)cancelTag.startFromFrame / targetMax : 0f;
+                float transitionNormalized = (float)cancelTag.fadeInFrames / 60f;
+
                 _preorderActions.Add(new PreorderActionInfo(action.id, bcTag.priority + cancelTag.priority + action.priority,
-                    Mathf.Min(bcTag.fadeOutPercentage, cancelTag.fadeInPercentage), cancelTag.startFromPercentage));
+                    transitionNormalized, fromNormalized));
             }
         }
         
         //如果要更换了就预约下一个动作
-        if (_preorderActions.Count <= 0 && (_pec >= 1 || CurrentAction.autoTerminate))
+        if (_preorderActions.Count <= 0 && (_curFrame >= CurrentAction.maxFrames || CurrentAction.autoTerminate))
         {
             _preorderActions.Add(new PreorderActionInfo(CurrentAction.autoNextActionId));
         }
         
         //冒泡所有的候选动作，得出应该切换的动作
-        _wasPercentage = _pec;   //先设置这个，之后可能会被ChangeAction所改变
         if (_preorderActions.Count > 0)
         {
             //有需要更换的动画就更换
@@ -174,7 +177,7 @@ public class ActionController : MonoBehaviour
                 (candidate1, candidate2) => candidate1.Priority > candidate2.Priority ? -1 : 1
                 );
             if (_preorderActions[0].ActionId == CurrentAction.id && CurrentAction.keepPlayingAnim)
-                KeepAction(_pec);
+                KeepAction();
             else
                 ChangeAction(_preorderActions[0].ActionId, _preorderActions[0].TransitionNormalized,
                     _preorderActions[0].FromNormalized, _preorderActions[0].FreezingAfterChangeAction);
@@ -184,7 +187,7 @@ public class ActionController : MonoBehaviour
         _preorderActions.Clear();
 
         //同步进度给 PlayablePlayer
-        playablePlayer.SetPec(_pec);
+        playablePlayer.SetPec(pec);
     }
 
     /// <summary>
@@ -196,33 +199,31 @@ public class ActionController : MonoBehaviour
         _onChangeAction = onActionChanged;
     }
 
-    public void CalculateInputAcceptance(float wasPec, float pec)
+    public void CalculateInputAcceptance(int lastFrame, int curFrame)
     {
         MoveInputAcceptance = 0;
         if (CurrentAction.inputAcceptance == null) return;
         foreach (MoveInputAcceptance acceptance in CurrentAction.inputAcceptance)
         {
-            if (acceptance.range.min <= pec && acceptance.range.max >= wasPec &&
+            if (acceptance.range.minFrame <= curFrame && acceptance.range.maxFrame >= lastFrame &&
                 (MoveInputAcceptance <= 0 || acceptance.rate < MoveInputAcceptance))
                 MoveInputAcceptance = acceptance.rate;
         }
     }
 
     /// <summary>
-    /// 计算当前动画帧的信息
+    /// 计算当前动画帧的判定盒开关信息
     /// </summary>
-    /// <param name="wasPec">上一帧的百分比</param>
-    /// <param name="pec">百分比进度</param>
-    private void CalculateBoxInfo(float wasPec, float pec)
+    private void CalculateBoxInfo(int lastFrame, int curFrame)
     {
         ActiveAttackBoxInfo.Clear();
         ActiveAttackBoxTag.Clear();
         foreach (AttackBoxTurnOnInfo aBox in CurrentAction.attackPhase)
         {
             bool open = false;
-            foreach (PercentageRange range in aBox.inPercentage)
+            foreach (FrameRange range in aBox.inFrames)
             {
-                if (pec >= range.min && wasPec <= range.max)
+                if (curFrame >= range.minFrame && lastFrame <= range.maxFrame)
                 {
                     open = true;
                     break;
@@ -243,9 +244,9 @@ public class ActionController : MonoBehaviour
         foreach (BeHitBoxTurnOnInfo bHitBox in CurrentAction.defensePhase)
         {
             bool open = false;
-            foreach (PercentageRange range in bHitBox.inPercentage)
+            foreach (FrameRange range in bHitBox.inFrames)
             {
-                if (pec >= range.min && pec <= range.max)
+                if (curFrame >= range.minFrame && curFrame <= range.maxFrame)
                 {
                     open = true;
                     break;
@@ -263,22 +264,16 @@ public class ActionController : MonoBehaviour
     }
 
     /// <summary>
-    /// 在当前的情况下，是否能Cancel掉CurrentAction
+    /// 在当前逻辑帧下，是否能 Cancel 掉 CurrentAction
     /// </summary>
-    /// <param name="action">动画</param>
-    /// <param name="currentPercentage">当前动画播放到了百分之多少</param>
-    /// <param name="checkCommand">是否检查输入，true代表要输入也合法才行</param>
-    /// <param name="beCancelledTag">符合条件的BeCancelledTag</param>
-    /// <param name="foundTag">符合条件的CancelTag</param>
-    /// <returns></returns>
-    private bool CanActionCancelCurrent(ActionInfo action, float currentPercentage, bool checkCommand, out BeCancelledTag beCancelledTag, out CancelTag foundTag)
+    private bool CanActionCancelCurrent(ActionInfo action, int curFrame, bool checkCommand, out BeCancelledTag beCancelledTag, out CancelTag foundTag)
     {
         foundTag = new CancelTag();
         beCancelledTag = new BeCancelledTag();
         foreach (BeCancelledTag bcTag in CurrentBeCancelledTag)
         {
-            //百分比时间符合的情况下，才可能有效
-            if (!(bcTag.percentageRange.max >= _wasPercentage && bcTag.percentageRange.min <= currentPercentage)) continue;
+            // 在逻辑帧区间内，才可能有效
+            if (!(bcTag.frameRange.maxFrame >= _lastFrame && bcTag.frameRange.minFrame <= curFrame)) continue;
             
             //判断CancelTag是否有交集，没有交集，说明也不能cancel
             bool tagFit = false;
@@ -317,10 +312,6 @@ public class ActionController : MonoBehaviour
     /// <summary>
     /// 更换到某个action
     /// </summary>
-    /// <param name="actionId">目标actionId</param>
-    /// <param name="transitionNormalized">融合百分比时间</param>
-    /// <param name="fromNormalized">从百分之多少开始播放新的动画</param>
-    /// <param name="freezingAfterChange">切换动作后，硬直多少秒</param>
     private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, float freezingAfterChange)
     {
         ActionInfo aInfo = GetActionById(actionId, out bool foundAction);
@@ -348,8 +339,9 @@ public class ActionController : MonoBehaviour
             
             _rootMotion = aInfo.rootMotionTween;
             
-            _wasPercentage = fromNormalized;
-            _pec = fromNormalized;
+            int fromFrame = Mathf.RoundToInt(fromNormalized * aInfo.maxFrames);
+            _lastFrame = fromFrame;
+            _curFrame = fromFrame;
             //顺便修一下面向
             transform.eulerAngles = new Vector3(0, command.inversed ? 270 : 90, 0);
             //修正完毕才接受新的是否要转向，因为可能这个动作本身自带转向
@@ -358,20 +350,14 @@ public class ActionController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 保持继续播放动作
-    /// 为什么这也需要一个专门的函数？因为要处理循环问题
-    /// </summary>
-    /// <param name="currentNormalized"></param>
-    private void KeepAction(float currentNormalized)
+    private void KeepAction()
     {
-        if (currentNormalized >= 1)
+        if (_curFrame >= CurrentAction.maxFrames)
         {
             playablePlayer.PlayClip(CurrentAction.animKey, 0, 0);
-            _pec = 0;
-            _wasPercentage = 0;
+            _curFrame = 0;
+            _lastFrame = 0;
         }
-            
     }
 
     /// <summary>
@@ -411,11 +397,146 @@ public class ActionController : MonoBehaviour
     /// </summary>
     /// <param name="actions"></param>
     /// <param name="defaultActionId"></param>
-    public void SetAllActions(List<ActionInfo> actions, string defaultActionId)
+    public void SetAllActions(List<ActionData> actions, string defaultActionId)
     {
         AllActions.Clear();
-        if (actions != null) AllActions = actions;
+        if (actions != null)
+        {
+            foreach (var data in actions)
+            {
+                AllActions.Add(ConvertToRuntimeInfo(data));
+            }
+        }
         ChangeAction(defaultActionId, 0, 0, 0);
+    }
+
+    public ActionInfo ConvertToRuntimeInfo(ActionData data)
+    {
+        float clipLength = playablePlayer.GetClipLength(data.animKey);
+        int maxFrames = Mathf.RoundToInt(clipLength * 60f);
+
+        ActionInfo info = new ActionInfo();
+        info.id = data.id;
+        info.animKey = data.animKey;
+        info.catalog = data.catalog;
+        info.maxFrames = maxFrames;
+        info.commands = data.commands;
+        info.autoNextActionId = data.autoNextActionId;
+        info.keepPlayingAnim = data.keepPlayingAnim;
+        info.autoTerminate = data.autoTerminate;
+        info.attacks = data.attacks;
+        info.rootMotionTween = data.rootMotionTween;
+        info.priority = data.priority;
+        info.flip = data.flip;
+
+        // 1. 转换 beCancelledTag
+        info.beCancelledTag = new BeCancelledTag[data.beCancelledTag.Length];
+        for (int i = 0; i < data.beCancelledTag.Length; i++)
+        {
+            var raw = data.beCancelledTag[i];
+            info.beCancelledTag[i] = new BeCancelledTag
+            {
+                frameRange = new FrameRange(
+                    Mathf.RoundToInt(raw.percentageRange.min * maxFrames),
+                    Mathf.RoundToInt(raw.percentageRange.max * maxFrames)
+                ),
+                cancelTag = raw.cancelTag,
+                fadeOutFrames = Mathf.RoundToInt(raw.fadeOutPercentage * maxFrames),
+                priority = raw.priority
+            };
+        }
+
+        // 2. 转换 cancelTag
+        info.cancelTag = new CancelTag[data.cancelTag.Length];
+        for (int i = 0; i < data.cancelTag.Length; i++)
+        {
+            var raw = data.cancelTag[i];
+            info.cancelTag[i] = new CancelTag
+            {
+                tag = raw.tag,
+                startFromFrame = Mathf.RoundToInt(raw.startFromPercentage * maxFrames),
+                fadeInFrames = Mathf.RoundToInt(raw.fadeInPercentage * maxFrames),
+                priority = raw.priority
+            };
+        }
+
+        // 3. 转换 tempBeCancelledTag
+        info.tempBeCancelledTag = new TempBeCancelledTag[data.tempBeCancelledTag.Length];
+        for (int i = 0; i < data.tempBeCancelledTag.Length; i++)
+        {
+            var raw = data.tempBeCancelledTag[i];
+            info.tempBeCancelledTag[i] = new TempBeCancelledTag
+            {
+                id = raw.id,
+                durationFrames = Mathf.RoundToInt(raw.percentage * maxFrames),
+                cancelTag = raw.cancelTag,
+                fadeOutFrames = Mathf.RoundToInt(raw.fadeOutPercentage * maxFrames),
+                priority = raw.priority
+            };
+        }
+
+        // 4. 转换 inputAcceptance
+        info.inputAcceptance = new MoveInputAcceptance[data.inputAcceptance.Length];
+        for (int i = 0; i < data.inputAcceptance.Length; i++)
+        {
+            var raw = data.inputAcceptance[i];
+            info.inputAcceptance[i] = new MoveInputAcceptance
+            {
+                range = new FrameRange(
+                    Mathf.RoundToInt(raw.range.min * maxFrames),
+                    Mathf.RoundToInt(raw.range.max * maxFrames)
+                ),
+                rate = raw.rate
+            };
+        }
+
+        // 5. 转换 attackPhase
+        info.attackPhase = new AttackBoxTurnOnInfo[data.attackPhase.Length];
+        for (int i = 0; i < data.attackPhase.Length; i++)
+        {
+            var raw = data.attackPhase[i];
+            FrameRange[] ranges = new FrameRange[raw.inPercentage.Length];
+            for (int j = 0; j < raw.inPercentage.Length; j++)
+            {
+                ranges[j] = new FrameRange(
+                    Mathf.RoundToInt(raw.inPercentage[j].min * maxFrames),
+                    Mathf.RoundToInt(raw.inPercentage[j].max * maxFrames)
+                );
+            }
+            info.attackPhase[i] = new AttackBoxTurnOnInfo
+            {
+                inFrames = ranges,
+                tag = raw.tag,
+                attackPhase = raw.attackPhase,
+                priority = raw.priority
+            };
+        }
+
+        // 6. 转换 defensePhase
+        info.defensePhase = new BeHitBoxTurnOnInfo[data.defensePhase.Length];
+        for (int i = 0; i < data.defensePhase.Length; i++)
+        {
+            var raw = data.defensePhase[i];
+            FrameRange[] ranges = new FrameRange[raw.inPercentage.Length];
+            for (int j = 0; j < raw.inPercentage.Length; j++)
+            {
+                ranges[j] = new FrameRange(
+                    Mathf.RoundToInt(raw.inPercentage[j].min * maxFrames),
+                    Mathf.RoundToInt(raw.inPercentage[j].max * maxFrames)
+                );
+            }
+            info.defensePhase[i] = new BeHitBoxTurnOnInfo
+            {
+                inFrames = ranges,
+                tag = raw.tag,
+                priority = raw.priority,
+                tempBeCancelledTagTurnOn = raw.tempBeCancelledTagTurnOn,
+                attackerActionChange = raw.attackerActionChange,
+                selfActionChange = raw.selfActionChange
+            };
+        }
+
+        return info;
     }
 
     /// <summary>
@@ -455,7 +576,7 @@ public class ActionController : MonoBehaviour
                 }
                 break;
             case ActionChangeType.ChangeToActionId:
-                //找到对应id的动作，如果有的话
+                //找到对应id of action，如果有的话
                 ActionInfo aInfo = GetActionById(acInfo.param, out bool found);
                 if (found)
                 {
@@ -491,7 +612,7 @@ public class ActionController : MonoBehaviour
     /// <param name="beCancelledTag"></param>
     public void AddTempBeCancelledTag(TempBeCancelledTag beCancelledTag)
     {
-        CurrentBeCancelledTag.Add(BeCancelledTag.FromTemp(beCancelledTag, _pec));
+        CurrentBeCancelledTag.Add(BeCancelledTag.FromTemp(beCancelledTag, _curFrame));
     }
 
     /// <summary>

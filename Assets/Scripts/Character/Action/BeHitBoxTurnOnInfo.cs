@@ -1,21 +1,20 @@
-﻿using System;
+using System;
 
 /// <summary>
-/// 开启一些受击盒子的信息
+/// 开启一些受击盒子的信息（帧单位）
 /// 可以理解为“一部分防御”
 /// </summary>
 [Serializable]
 public struct BeHitBoxTurnOnInfo
 {
     /// <summary>
-    /// 开启的时间区域，可以分为多段时间开启
+    /// 开启的帧区域，可以分为多段开启
     /// </summary>
-    public PercentageRange[] inPercentage;
+    public FrameRange[] inFrames;
     
     /// <summary>
     /// 要开启的盒子的tag
     /// </summary>
-    /// <returns></returns>
     public string[] tag;
 
     /// <summary>
@@ -29,14 +28,12 @@ public struct BeHitBoxTurnOnInfo
     public string[] tempBeCancelledTagTurnOn;
     
     /// <summary>
-    /// 与攻击框不同（是因为这个demo的游戏设计精度所决定的），受击框本身会决定这次受到攻击的时候双方的动作。
-    /// 因为我们完全可以开启一个受击框代表盾牌的同时，还有一个受击框代表屁股，屁股挨揍和盾牌挨揍效果完全不同
+    /// 与攻击框不同，受击框本身会决定这次受到攻击的时候双方的动作。
     /// </summary>
     public ActionChangeInfo attackerActionChange;
     
     /// <summary>
-    /// 与攻击框不同（是因为这个demo的游戏设计精度所决定的），受击框本身会决定这次受到攻击的时候双方的动作。
-    /// 因为我们完全可以开启一个受击框代表盾牌的同时，还有一个受击框代表屁股，屁股挨揍和盾牌挨揍效果完全不同
+    /// 与攻击框不同，受击框本身会决定这次受到攻击的时候双方的动作。
     /// </summary>
     public ActionChangeInfo selfActionChange;
 }

@@ -1,13 +1,13 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 游戏的静态数据，这里有一些是凑效果的
+/// 游戏的静态数据，从 JSON 载入原始数据 ActionData
 /// </summary>
 public static class GameData
 {
     private static bool _loaded = false; 
-    public static Dictionary<string, ActionInfo> Actions = new Dictionary<string, ActionInfo>();
+    public static Dictionary<string, ActionData> Actions = new Dictionary<string, ActionData>();
 
     public static void Load()
     {
@@ -18,22 +18,31 @@ public static class GameData
         TextAsset ta = Resources.Load<TextAsset>("GameData/Action");
         if (ta)
         {
-            ActionInfoContainer aic = JsonUtility.FromJson<ActionInfoContainer>(ta.text);
-            foreach (ActionInfo info in aic.data)
+            ActionDataContainer adc = JsonUtility.FromJson<ActionDataContainer>(ta.text);
+            foreach (ActionData data in adc.data)
             {
-                if (info.id != "") Actions.Add(info.id, info);
+                if (data.id != "") Actions.Add(data.id, data);
             }
         }
     }
 
-    public static List<ActionInfo> AllActions()
+    public static List<ActionData> AllActionDatas()
     {
-        List<ActionInfo> res = new List<ActionInfo>();
-        foreach (KeyValuePair<string,ActionInfo> actionInfo in Actions)
+        List<ActionData> res = new List<ActionData>();
+        foreach (KeyValuePair<string, ActionData> pair in Actions)
         {
-            res.Add(actionInfo.Value);
+            res.Add(pair.Value);
         }
 
         return res;
+    }
+
+    public static ActionData GetActionData(string id)
+    {
+        if (Actions.TryGetValue(id, out ActionData data))
+        {
+            return data;
+        }
+        return default;
     }
 }

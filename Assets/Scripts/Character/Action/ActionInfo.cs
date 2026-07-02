@@ -1,16 +1,23 @@
-﻿using System;
+using System;
 
 /// <summary>
-/// 角色的一个动作的信息
-/// 在这个demo里面我偷了一个懒：就是直接让所有的类似这个结构的结构都变成可以填表的数据了
-/// 其实应该有个ActionData，通过这个ActionData转为ActionInfo来用，这也是大多团队都会漏掉做的一步
-/// ActionData就是读取Json表的数据，里面只有string int等基本类型，然后通过转换函数：ActionInfo::FromData(ActionData data)
-/// 来转换出来类似enum的结构，但是这个比较繁琐，可以在第一次重构的时候做，这个是必须要做的， 不然策划几乎没法做好
-/// 尤其是enum现在用数字做，很魔法，最好换成string来做。
-/// 但还是这句话，既然是demo……又不是不能用，对吧
-///
-/// 至于音效和镜头的Tween，也应该是这个结构里面提供的，只是这里就不给范例了，非常简单的
-/// 比如镜头的Tween，其实是一个(float normalized)=>(Vector3 offset, float fieldOfView)
+/// 阶段性输入允许的逻辑帧区间
+/// </summary>
+[Serializable]
+public struct MoveInputAcceptance
+{
+    /// <summary>
+    /// 在逻辑帧区间
+    /// </summary>
+    public FrameRange range;
+    /// <summary>
+    /// 允许移动的比例 (0.0f - 1.0f)
+    /// </summary>
+    public float rate;
+}
+
+/// <summary>
+/// 角色的一个动作逻辑数据（完全以 60Hz 帧为单位运行）
 /// </summary>
 [Serializable]
 public struct ActionInfo
@@ -22,49 +29,42 @@ public struct ActionInfo
     public string id;
 
     /// <summary>
-    /// 在Animator中的一个动作的名称，用来叫Animator播放某个动作的
+    /// 绑定的动画剪辑名称/状态名
     /// </summary>
     public string animKey;
 
     /// <summary>
-    /// 动作的分类，一个动作不一定要有分类，所以可以是空字符串
-    /// 但是他会被用于一些动作切换的时候，比如我们可以定义它为“受伤动作”
+    /// 动作的分类
     /// </summary>
     public string catalog;
 
     /// <summary>
-    /// 这个动作的CancelTag，他可以Cancel掉哪些动作
+    /// 该动作的最大逻辑帧数 (AnimationClip.length * 60)
+    /// </summary>
+    public int maxFrames;
+
+    /// <summary>
+    /// 这个动作的 Cancel 连招信息
     /// </summary>
     public CancelTag[] cancelTag;
 
     /// <summary>
-    /// 这个动作可以被Cancel的信息
-    /// 这里是长久存在的BeCancelledTag
+    /// 这个动作可以被 Cancel 的被动配置
     /// </summary>
     public BeCancelledTag[] beCancelledTag;
 
     /// <summary>
-    /// 临时的被Cancel信息
-    /// 这个是需要临时开启和关闭的信息
+    /// 临时的被 Cancel 信息（如命中时开启）
     /// </summary>
     public TempBeCancelledTag[] tempBeCancelledTag;
 
     /// <summary>
-    /// 允许的操作，一个动作未必只有一个方式操作出来
-    /// 比如街霸6的春丽百裂腿，236脚和连续按脚都能发
+    /// 触发此动作需要的按键指令
     /// </summary>
     public ActionCommand[] commands;
 
     /// <summary>
-    /// 这里是保持移动方向的倍率，根据游戏不同、精度不同所需要的参数不同
-    /// 大多横版游戏这个倍率会有多个值
-    /// 这个值的作用是当做这个动作的时候，我继续前进或者后退按照什么倍率来
-    /// 在动作游戏中，我们放有些技能，按住前进会向前更多的距离，按住后则会向前较短距离甚至不会向前
-    /// 靠的就是这个参数，他的倍率x角色移动速度小于动作本身位移速度，就会导致按住后动作前进距离变短
-    /// 大多动作这个值应该都是0，而移动类则是1
-    /// 值得注意的是，一个动作的acceptance是阶段性的，比如起跳动作起跳的蹲伏阶段是不能移动的，但是跳起来之后却可以
-    /// 如果美术把起跳到最高点做在一个动作了，也问题不大，靠这个来做
-    /// 如果策划填表填错了，2段重叠了，那么就取速度慢的那段
+    /// 本动作期间允许移动输入的比例控制
     /// </summary>
     public MoveInputAcceptance[] inputAcceptance;
 
@@ -106,32 +106,27 @@ public struct ActionInfo
     public bool autoTerminate;
     
     /// <summary>
-    /// 在这个动作期间存在的攻击信息
+    /// 造成的伤害数据信息
     /// </summary>
     public AttackInfo[] attacks;
 
     /// <summary>
-    /// 每一段攻击的信息
+    /// 每一段攻击判定盒的开启帧范围
     /// </summary>
     public AttackBoxTurnOnInfo[] attackPhase;
 
     /// <summary>
-    /// 受击框开关信息，
-    /// 若有2个阶段重叠，那么战斗中的信息取哪个？
-    /// 首先会看受击框属于哪个信息的，如果受击框同时被多个重叠的阶段开启
-    /// 那就真的听天由命了（这就是策划配表问题了，只能通过编辑器ui解决）
+    /// 受击判定盒的开启帧范围
     /// </summary>
     public BeHitBoxTurnOnInfo[] defensePhase;
 
     /// <summary>
-    /// 指向Methods/RootMotionMethods下的RootMotion函数
-    /// 如果这个函数找不到或者这个值为空，则会返回停留在原地(Vector3.zero)
+    /// 动作期间的逻辑位移函数名称
     /// </summary>
     public ScriptMethodInfo rootMotionTween;
 
     /// <summary>
-    /// 优先级
-    /// 一个动作的基础优先级，优先级越高的动作越可能被选中
+    /// 动作基础优先级
     /// </summary>
     public int priority;
 
@@ -145,29 +140,4 @@ public struct ActionInfo
     /// 但实际上按住后再按kick和按kick本来就是两个动作了对吧，他们只是“大部分相似”而已
     /// </summary>
     public bool flip;
-}
-
-/// <summary>
-/// 读取json用的
-/// </summary>
-[Serializable]
-public struct ActionInfoContainer
-{
-    public ActionInfo[] data;
-}
-
-/// <summary>
-/// 阶段性输入百分比
-/// </summary>
-[Serializable]
-public struct MoveInputAcceptance
-{
-    /// <summary>
-    /// 在百分比多少的阶段
-    /// </summary>
-    public PercentageRange range;
-    /// <summary>
-    /// 允许百分比
-    /// </summary>
-    public float rate;
 }

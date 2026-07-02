@@ -176,7 +176,12 @@ public class PlayableAnimationPlayer : MonoBehaviour
 
     private void SetupMainPlayable(AnimationClip clip, float startPercentage)
     {
+        // 必须先在 PlayableGraph 中显式断开 Mixer 对应输入端口的连接
+        _graph.Disconnect(_mixer, 0);
+        _graph.Disconnect(_mixer, 1);
+
         if (_currentPlayable.IsValid()) _currentPlayable.Destroy();
+        if (_transitionPlayable.IsValid()) _transitionPlayable.Destroy();
         
         _currentPlayable = AnimationClipPlayable.Create(_graph, clip);
         _currentPlayable.SetSpeed(0); // 完全手动 Evaluate 控制进度

@@ -1,16 +1,16 @@
-﻿using System;
+using System;
 
 /// <summary>
-/// 攻击盒开启的信息
+/// 攻击盒开启的信息（帧单位）
 /// 可以视为“一段攻击”
 /// </summary>
 [Serializable]
 public struct AttackBoxTurnOnInfo
 {
     /// <summary>
-    /// 开启的时间段
+    /// 开启的帧区间
     /// </summary>
-    public PercentageRange[] inPercentage;
+    public FrameRange[] inFrames;
 
     /// <summary>
     /// 要开启的攻击盒的tag
