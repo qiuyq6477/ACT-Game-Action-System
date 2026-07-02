@@ -33,10 +33,10 @@ public class GameMain : MonoBehaviour
         //就暂时写在这里读取吧，demo自然就偷懒了
         GameData.Load();
         //同样是偷懒，把数据全塞给角色
-        player.action.SetAllActions(GameData.AllActionDatas(), "BoxingStand");
+        player.action.SetAllActions(GameData.AllActions(), "BoxingStand");
         foreach (CharacterObj e in enemy)
         {
-            e.action.SetAllActions(GameData.AllActionDatas(), "TurnBack");
+            e.action.SetAllActions(GameData.AllActions(), "TurnBack");
         }
     }
 

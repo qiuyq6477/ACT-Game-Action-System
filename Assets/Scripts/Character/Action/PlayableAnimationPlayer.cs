@@ -17,6 +17,7 @@ public class PlayableAnimationPlayer : MonoBehaviour
     }
 
     [SerializeField] private List<StateClipMapping> serializedMappings = new List<StateClipMapping>();
+    public List<StateClipMapping> SerializedMappings => serializedMappings;
 
     private PlayableGraph _graph;
     private AnimationMixerPlayable _mixer;
@@ -79,7 +80,7 @@ public class PlayableAnimationPlayer : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    private void PopulateMappingsFromController(Animator animator)
+    public void PopulateMappingsFromController(Animator animator)
     {
         if (animator == null || animator.runtimeAnimatorController == null) return;
 

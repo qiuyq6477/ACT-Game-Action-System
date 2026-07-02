@@ -17,7 +17,7 @@ public struct MoveInputAcceptance
 }
 
 /// <summary>
-/// 角色的一个动作逻辑数据（完全以 60Hz 帧为单位运行）
+/// 角色的一个动作逻辑数据（完全以 60Hz 帧为单位运行，对齐 JSON 反序列化）
 /// </summary>
 [Serializable]
 public struct ActionInfo
@@ -140,4 +140,13 @@ public struct ActionInfo
     /// 但实际上按住后再按kick和按kick本来就是两个动作了对吧，他们只是“大部分相似”而已
     /// </summary>
     public bool flip;
+}
+
+/// <summary>
+/// 用于从 JSON 序列化加载 ActionInfo 的容器
+/// </summary>
+[Serializable]
+public class ActionInfoContainer
+{
+    public ActionInfo[] data;
 }
