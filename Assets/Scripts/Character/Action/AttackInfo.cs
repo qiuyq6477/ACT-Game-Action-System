@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 /// <summary>
 /// 造成的伤害信息
@@ -31,14 +31,14 @@ public struct AttackInfo
     public MoveInfo pushPower;
 
     /// <summary>
-    /// 目标的硬直时间（秒）
+    /// 目标的受击硬直逻辑帧数
     /// </summary>
-    public float hitStun;
+    public int hitStun;
 
     /// <summary>
-    /// 攻击者自身的卡帧（秒）
+    /// 攻击者与受击者的卡帧逻辑帧数（顿帧）
     /// </summary>
-    public float freeze;
+    public int freeze;
 
     /// <summary>
     /// 这个攻击在动作变换之前可以命中同一个目标多少次
@@ -46,9 +46,9 @@ public struct AttackInfo
     public int canHitSameTarget;
 
     /// <summary>
-    /// 如果超过1次，那么每2次之间的间隔时间是多少秒
+    /// 如果超过1次，那么每2次之间的冷却逻辑帧数
     /// </summary>
-    public float hitSameTargetDelay;
+    public int hitSameTargetDelay;
     
     /// <summary>
     /// 当命中的时候，自身会发生的变化

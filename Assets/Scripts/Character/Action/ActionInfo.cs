@@ -88,24 +88,6 @@ public struct ActionInfo
     public string autoNextActionId;
 
     /// <summary>
-    /// 档切换到自己这个动作的时候，是否保持继续播放
-    /// 这个意思是：比如移动会被移动自己cancel，这时候移动动作应该继续播放，而不是重置，所以要有这个true
-    /// 原本在帧为单位的时候，cancel关系都是nextFrame所以可以通过frame之间的连接关系来，现在要以动作为单位，就靠这个凑出这个效果了
-    /// </summary>
-    public bool keepPlayingAnim;
-
-    /// <summary>
-    /// 是否当没有收到命令的时候，就自动走向autoNext了
-    /// 这并不是一个好的做法，正确的做法，应该是在动作过程中设置某些帧
-    /// 在这些帧去判断是否还有对应的command，如果没有了就终止了
-    /// UE的Montage里面可以用多个NotifyState分布在动画过程
-    /// Unity的话得自己做个编辑工具，所以我这个demo就先偷懒了——如果true，就是每一帧都做这个检查
-    /// 其实从逻辑结构来说，我可以写成一个float[]，每个float代表一个percentage检查一下
-    /// 但是这个填表………不是地球人可以轻易做到的（烦得很）………所以就先偷懒了，但是意思是一样的
-    /// </summary>
-    public bool autoTerminate;
-    
-    /// <summary>
     /// 造成的伤害数据信息
     /// </summary>
     public AttackInfo[] attacks;

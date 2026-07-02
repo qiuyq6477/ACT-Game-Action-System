@@ -87,9 +87,9 @@ public class ActionController : MonoBehaviour
     public Vector3 RootMotionMove { get; private set; } = Vector3.zero;
 
     /// <summary>
-    /// 硬直（卡帧）时间
+    /// 硬直（卡帧）逻辑帧数
     /// </summary>
-    private float _freezing = 0;
+    private int _freezing = 0;
     /// <summary>
     /// 是否在硬直或者卡帧
     /// </summary>
@@ -116,8 +116,8 @@ public class ActionController : MonoBehaviour
         //没有动画就不会工作
         if (AllActions.Count <= 0) return;
         
-        //扣减硬直时间
-        if (_freezing > 0) _freezing -= delta;
+        //扣减硬直逻辑帧数
+        if (_freezing > 0) _freezing--;
         
         // 手动递增当前逻辑帧
         _lastFrame = _curFrame;
@@ -155,8 +155,8 @@ public class ActionController : MonoBehaviour
             {
                 float targetLength = playablePlayer.GetClipLength(action.animKey);
                 int targetMax = Mathf.RoundToInt(targetLength * 60f);
-                float fromNormalized = targetMax > 0 ? (float)cancelTag.startFromFrame / targetMax : 0f;
-                float transitionNormalized = (float)cancelTag.fadeInFrames / 60f;
+                float fromNormalized = targetMax > 0 ? (float)cancelTag.startFrom / targetMax : 0f;
+                float transitionNormalized = (float)cancelTag.fadeIn / 60f;
 
                 _preorderActions.Add(new PreorderActionInfo(action.id, bcTag.priority + cancelTag.priority + action.priority,
                     transitionNormalized, fromNormalized));
@@ -164,7 +164,7 @@ public class ActionController : MonoBehaviour
         }
         
         //如果要更换了就预约下一个动作
-        if (_preorderActions.Count <= 0 && (_curFrame >= CurrentAction.maxFrames || CurrentAction.autoTerminate))
+        if (_preorderActions.Count <= 0 && (_curFrame >= CurrentAction.maxFrames || ShouldTerminateMovementAction()))
         {
             _preorderActions.Add(new PreorderActionInfo(CurrentAction.autoNextActionId));
         }
@@ -176,7 +176,7 @@ public class ActionController : MonoBehaviour
             _preorderActions.Sort(
                 (candidate1, candidate2) => candidate1.Priority > candidate2.Priority ? -1 : 1
                 );
-            if (_preorderActions[0].ActionId == CurrentAction.id && CurrentAction.keepPlayingAnim)
+            if (_preorderActions[0].ActionId == CurrentAction.id)
                 KeepAction();
             else
                 ChangeAction(_preorderActions[0].ActionId, _preorderActions[0].TransitionNormalized,
@@ -312,7 +312,7 @@ public class ActionController : MonoBehaviour
     /// <summary>
     /// 更换到某个action
     /// </summary>
-    private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, float freezingAfterChange)
+    private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, int freezingAfterChange)
     {
         ActionInfo aInfo = GetActionById(actionId, out bool foundAction);
         if (foundAction)
@@ -409,8 +409,8 @@ public class ActionController : MonoBehaviour
     /// </summary>
     /// <param name="acInfo">变换动作信息</param>
     /// <param name="forceDir">如有必要（其实就是byCatalog）得给个动作受力方向</param>
-    /// <param name="freezing">如果切换到这个动作，硬直多少秒</param>
-    public void PreorderActionByActionChangeInfo(ActionChangeInfo acInfo, ForceDirection forceDir, float freezing = 0)
+    /// <param name="freezing">如果切换到这个动作，硬直逻辑帧数</param>
+    public void PreorderActionByActionChangeInfo(ActionChangeInfo acInfo, ForceDirection forceDir, int freezing = 0)
     {
         switch (acInfo.changeType)
         {
@@ -462,13 +462,41 @@ public class ActionController : MonoBehaviour
     /// 加入卡帧，卡帧会叠加，但是最多不会超过一个值，并且越接近的时候增加量越少
     /// 注意，这只能是卡帧freezing，因为他会立即暂停角色动作，而受击的hitStun是在切换动作之后，切勿走这里
     /// </summary>
-    /// <param name="freezingSec"></param>
-    public void SetFreezing(float freezingSec)
+    /// <param name="freezing"></param>
+    public void SetFreezing(int freezing)
     {
         if (_freezing < 0) _freezing = 0;   //清理一下
-        float maxFreezing = 0.5f;   //卡帧、硬直上限
-        float addRate = Mathf.Clamp(maxFreezing - _freezing, 0, maxFreezing) / maxFreezing;
-        _freezing += freezingSec * addRate;
+        int maxFreezing = 30;   //卡帧、硬直上限 (30 帧)
+        float addRate = Mathf.Clamp((float)(maxFreezing - _freezing), 0f, (float)maxFreezing) / maxFreezing;
+        _freezing += Mathf.RoundToInt(freezing * addRate);
+    }
+
+    private bool ShouldTerminateMovementAction()
+    {
+        if (CurrentAction.commands == null || CurrentAction.commands.Length == 0) return false;
+        
+        bool allCommandsAreDirections = true;
+        foreach (var cmd in CurrentAction.commands)
+        {
+            foreach (var key in cmd.keySequence)
+            {
+                if (!InputToCommand.IsDirectionInput(key))
+                {
+                    allCommandsAreDirections = false;
+                    break;
+                }
+            }
+            if (!allCommandsAreDirections) break;
+        }
+
+        if (!allCommandsAreDirections) return false;
+
+        foreach (var cmd in CurrentAction.commands)
+        {
+            if (command.ActionOccur(cmd)) return false;
+        }
+
+        return true;
     }
 
     /// <summary>

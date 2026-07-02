@@ -11,9 +11,9 @@ using UnityEngine.Serialization;
 public class InputToCommand : MonoBehaviour
 {
     /// <summary>
-    /// 保持一个按键的存在时间最多这么多秒，太早的就释放掉了
+    /// 保持一个按键的存在时间最多这么多帧，太早的就释放掉了 (1.2s -> 72帧)
     /// </summary>
-    private const float RecordKeepTime = 1.2f;
+    private const int RecordKeepTime = 72;
 
     /// <summary>
     /// 是否接受手柄输入，这个当然可以不是bool，而是接受几号手柄输入
@@ -34,17 +34,17 @@ public class InputToCommand : MonoBehaviour
     [HideInInspector] public bool inversed = false;
 
     /// <summary>
-    /// 现在的时间戳
+    /// 现在的时间戳逻辑帧数
     /// </summary>
-    private double _timeStamp = 0;
+    private int _timeStamp = 0;
 
     /// <summary>
-    /// 非方向输入得有个cd，不然频率太高影响连招手感
+    /// 非方向输入得有个cd，不然频率太高影响连招手感 (0.09s -> 5帧)
     /// 如果没有这个，非常容易出现“全自动连续攻击”，如果攻击派生动作的按键一样的话
     /// </summary>
-    private const float NonDirectionInputCooldown = 0.09f;
+    private const int NonDirectionInputCooldown = 5;
 
-    private float _nonDirectCooldown = 0;
+    private int _nonDirectCooldown = 0;
     
     /// <summary>
     /// 值得注意的是：
@@ -86,11 +86,11 @@ public class InputToCommand : MonoBehaviour
             }
             else
             {
-                _nonDirectCooldown -= dt;
+                _nonDirectCooldown--;
             }
 
-            float xInput = Input.GetAxis("Horizontal");
-            float yInput = Input.GetAxis("Vertical");
+            float xInput = Input.GetAxisRaw("Horizontal");
+            float yInput = Input.GetAxisRaw("Vertical");
             float deadArea = 0.2f;
             bool xHasInput = Mathf.Abs(xInput) >= deadArea;
             bool yHasInput = Mathf.Abs(yInput) >= deadArea;
@@ -123,7 +123,7 @@ public class InputToCommand : MonoBehaviour
         }
         
         //计数器
-        _timeStamp += dt;
+        _timeStamp++;
     }
 
     private void AddInput(KeyMap key)
@@ -140,15 +140,13 @@ public class InputToCommand : MonoBehaviour
     /// <returns></returns>
     public bool ActionOccur(ActionCommand action)
     {
-        //这里的顺序非常重要，所以一定要for而不能foreach，尽管C#尽可能保证了顺序执行，但谁知道呢？
-        double lastStamp = _timeStamp - Mathf.Max(action.validInSec, Time.deltaTime);   //最小就是上1帧
+        // 这里的顺序非常重要，所以一定要for而不能foreach
+        int valid = Mathf.RoundToInt(action.validInSec * 60f);
+        int lastStamp = _timeStamp - Mathf.Max(valid, 1);   //最小就是上1帧
         for (int i = 0; i < action.keySequence.Length; i++)
         {
-            int idx = 0;
             bool found = false;
-            //之所以这里不能记录上一次的j，把上一次的j作为j的起点，是因为同一帧会有若干输入
-            //他们的排序是不稳定的，但是他们的先后顺序应该都是相等的，比如同一帧输入了前a，那么它既可以是前→a，也可以是a→前。
-            //所以我们宁可牺牲一些性能，也要追求精准
+            // 查找从 lastStamp 开始的符合要求的输入帧
             for (int j = 0; j < _input.Count; j++)
             {
                 if (_input[j].TimeStamp >= lastStamp && GetKeyInput(_input[j].Key) == action.keySequence[i])
@@ -158,30 +156,10 @@ public class InputToCommand : MonoBehaviour
                     break;
                 }
             }
-            if (found) continue;
-            //特殊处理最后一个，最后一个可以检查_newInput里面获取
-            //这是一个策划配表和Update之间的妥协，如果是帧作为单位就不会有问题，但是update……
-            //策划作为地球人，可不知道delta是多少，每台电脑的delta都不一样，所以只能做这个补丁
-            //当然也可以做成如果检查时间都不符合的情况下，所有的指令都看new，着看你需要咋样的手感了
-            //我这里就用最后一个键可以访问new的
-            if (i == action.keySequence.Length - 1)
-            {
-                for (int j = 0; j < _newInputs.Count; j++)
-                {
-                    if (GetKeyInput(_newInputs[j].Key) == action.keySequence[i])
-                    {
-                        found = true;
-                        lastStamp = _newInputs[j].TimeStamp;
-                        break;
-                    }
-                }
-            }
-            if (found) continue;
-            //有一个输入没找到，那自然就结束了
-            return false;   
+            if (!found) return false; // 有一个输入没找到，那自然就结束了
         }
 
-        return true;    //肯定找到了才会到这里
+        return true;    // 肯定找到了才会到这里
     }
 
     /// <summary>
@@ -327,16 +305,16 @@ public enum KeyMap
 public struct KeyInputRecord
 {
     /// <summary>
-    /// 按下的时间记录
+    /// 按下的逻辑帧数记录
     /// </summary>
-    public double TimeStamp;
+    public int TimeStamp;
 
     /// <summary>
     /// 按下的键
     /// </summary>
     public KeyMap Key;
 
-    public KeyInputRecord(KeyMap key, double timeStamp)
+    public KeyInputRecord(KeyMap key, int timeStamp)
     {
         Key = key;
         TimeStamp = timeStamp;

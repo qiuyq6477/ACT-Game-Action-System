@@ -576,10 +576,10 @@
                         "inSec": 0.07999999821186066,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.11999999731779099,
-                    "freeze": 0.05000000074505806,
+                    "hitStun": 7,
+                    "freeze": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1.0,
+                    "hitSameTargetDelay": 60,
                     "selfActionChange": {
                         "changeType": 0,
                         "param": "",
@@ -701,10 +701,10 @@
                         "inSec": 0.11999999731779099,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.11999999731779099,
-                    "freeze": 0.07999999821186066,
+                    "hitStun": 7,
+                    "freeze": 5,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1.0,
+                    "hitSameTargetDelay": 60,
                     "selfActionChange": {
                         "changeType": 0,
                         "param": "",
@@ -842,10 +842,10 @@
                         "inSec": 0.11999999731779099,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.11999999731779099,
-                    "freeze": 0.05000000074505806,
+                    "hitStun": 7,
+                    "freeze": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1.0,
+                    "hitSameTargetDelay": 60,
                     "selfActionChange": {
                         "changeType": 0,
                         "param": "",
@@ -968,10 +968,10 @@
                         "inSec": 0.05999999865889549,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.11999999731779099,
-                    "freeze": 0.05000000074505806,
+                    "hitStun": 7,
+                    "freeze": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1.0,
+                    "hitSameTargetDelay": 60,
                     "selfActionChange": {
                         "changeType": 1,
                         "param": "TwinKickAutoCombo",
@@ -1067,10 +1067,10 @@
                         "inSec": 0.25999999046325686,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.11999999731779099,
-                    "freeze": 0.05000000074505806,
+                    "hitStun": 7,
+                    "freeze": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1.0,
+                    "hitSameTargetDelay": 60,
                     "selfActionChange": {
                         "changeType": 0,
                         "param": "",

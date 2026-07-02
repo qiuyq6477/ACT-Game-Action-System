@@ -14,12 +14,12 @@ public struct CancelTag
     /// <summary>
     /// 这个动作会从第几帧开始播放
     /// </summary>
-    public int startFromFrame;
+    public int startFrom;
 
     /// <summary>
     /// 动画融合进来的帧数长度
     /// </summary>
-    public int fadeInFrames;
+    public int fadeIn;
     
     /// <summary>
     /// 当从这里Cancel动作时，优先级变化
@@ -43,7 +43,7 @@ public struct BeCancelledTag
     /// <summary>
     /// 动画融合出去的帧数
     /// </summary>
-    public int fadeOutFrames;
+    public int fadeOut;
     
     /// <summary>
     /// 当从这里被Cancel，动作会增加多少优先级
@@ -55,9 +55,9 @@ public struct BeCancelledTag
     /// </summary>
     public static BeCancelledTag FromTemp(TempBeCancelledTag tempTag, int fromFrame) => new BeCancelledTag
     {
-        frameRange = new FrameRange(fromFrame, fromFrame + tempTag.durationFrames),
+        frameRange = new FrameRange(fromFrame, fromFrame + tempTag.duration),
         cancelTag = tempTag.cancelTag,
-        fadeOutFrames = tempTag.fadeOutFrames,
+        fadeOut = tempTag.fadeOut,
         priority = tempTag.priority
     };
 }
@@ -73,7 +73,7 @@ public struct TempBeCancelledTag
     /// <summary>
     /// 开启的帧数长度
     /// </summary>
-    public int durationFrames;
+    public int duration;
     
     /// <summary>
     /// 可以Cancel的CancelTag
@@ -83,7 +83,7 @@ public struct TempBeCancelledTag
     /// <summary>
     /// 动画融合出去的帧数
     /// </summary>
-    public int fadeOutFrames;
+    public int fadeOut;
     
     /// <summary>
     /// 当从这里被Cancel，动作会增加多少优先级

@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// 预约一个Action，作为下一个Action的候选人
 /// </summary>
 public struct PreorderActionInfo
@@ -33,10 +33,10 @@ public struct PreorderActionInfo
     /// 就是做个专门的Montage来让整个角色随着受击（左、右，或者说前、后）方向抖动，然后把这个montage“盖上”
     /// 同时让硬直也发生在这个montage里面，就有这个效果了。
     /// </summary>
-    public float FreezingAfterChangeAction;
+    public int FreezingAfterChangeAction;
 
     public PreorderActionInfo(string actionId, int priority = 0, float transitionNormalized = 0,
-        float fromNormalized = 0, float freezingAfterChangeAction = 0)
+        float fromNormalized = 0, int freezingAfterChangeAction = 0)
     {
         ActionId = actionId;
         Priority = priority;

@@ -126,7 +126,7 @@ public class CharacterObj : MonoBehaviour
         {
             //HitRecords
             foreach (HitRecord record in HitRecords)
-                record.Update(delta);
+                record.LogicTick();
         }
     }
 
