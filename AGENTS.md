@@ -23,3 +23,7 @@
 8. **Every doc carries a status header** — new files under `doc/` start with `> 状态：规划中 · YYYY-MM` (or 参考资料) right after the H1; vocabulary and the directory map live in `doc/README.md`. Conversation transcripts / model-named dumps must never be committed — distill findings into module AGENTS.md, a bugfix/issue entry, or an existing plan doc, then discard the raw text (git history keeps deleted docs recoverable).
 9. **Doc lifecycle** — when a plan finishes: distill durable rules into the module `AGENTS.md`, flip its status to `已实施 · date`, add a row to that directory's README index. Executed plans with no external inbound links move to `doc/archive/<topic>/`; load-bearing docs referenced from AGENTS.md/code stay in place. Superseded docs get `已废弃 → successor-link` in their status header instead of deletion when history matters.
 10. **Lint doc/ after each milestone** — sweep for: orphan files (no inbound links), status headers contradicting code reality, stale claims superseded by newer docs, duplicate/similarly-named docs, missing cross-references. Apply fixes in the same pass; archive or link what has drifted.
+
+## Development Conventions
+
+- **Commits:** Conventional Commits — `<type>(<scope>): <subject>` (feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert). Subject = one-line summary; body = bullet points, one per change (`- ...`); link related post-mortems as a bullet (`- post-mortem: doc/bugfix/<file>.md`).
