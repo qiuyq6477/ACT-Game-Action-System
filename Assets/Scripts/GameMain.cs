@@ -45,7 +45,7 @@ public class GameMain : MonoBehaviour
         Vector3 pMoved = player.ThisTickMove(dt);
         player.transform.position  = new Vector3(
             pWas.x + pMoved.x,
-            Mathf.Max(pWas.y + pMoved.y),
+            Mathf.Max(0, pWas.y + pMoved.y),
             pWas.z + pMoved.z
         );
         

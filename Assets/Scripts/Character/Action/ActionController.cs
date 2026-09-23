@@ -231,7 +231,7 @@ public class ActionController : MonoBehaviour
             bool open = false;
             foreach (PercentageRange range in bHitBox.inPercentage)
             {
-                if (pec >= range.min && pec <= range.max)
+                if (pec >= range.min && wasPec <= range.max)
                 {
                     open = true;
                     break;

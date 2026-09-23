@@ -40,13 +40,13 @@ public class AttackHitBox : MonoBehaviour
     /// </summary>
     [Tooltip("基础的优先级")] public int basePriority;
     /// <summary>
-    /// 临时的优先级
+    /// 临时的优先级，由当前开启自己的那个 AttackBoxTurnOnInfo.priority 给出，每帧重算
     /// </summary>
-    private int _tempPriority = 0;
+    public int TempPriority { get; private set; }
     /// <summary>
     /// 攻击盒当前的优先级
     /// </summary>
-    public int Priority => _tempPriority + basePriority;
+    public int Priority => TempPriority + basePriority;
     
     /// <summary>
     /// 当前是否开启了
@@ -56,6 +56,7 @@ public class AttackHitBox : MonoBehaviour
     private void Update()
     {
         Active = master && master.ShouldAttackBoxActive(tags);
+        TempPriority = master ? master.GetAttackBoxTempPriority(tags) : 0;
     }
 
     private void OnTriggerEnter(Collider other)

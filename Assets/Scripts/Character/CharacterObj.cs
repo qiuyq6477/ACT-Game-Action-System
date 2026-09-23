@@ -159,6 +159,42 @@ public class CharacterObj : MonoBehaviour
     }
 
     /// <summary>
+    /// 攻击盒当前的临时优先级：开启它的攻击阶段里优先级最高的那个
+    /// 取最高而不是求和，因为两个阶段同时开启同一个盒子本身就是配表事故，求和只会把错误放大
+    /// </summary>
+    /// <param name="tags">攻击盒的tag</param>
+    /// <returns></returns>
+    public int GetAttackBoxTempPriority(string[] tags)
+    {
+        int res = 0;
+        bool found = false;
+        foreach (AttackBoxTurnOnInfo info in action.ActiveAttackBoxInfo)
+        {
+            bool opened = false;
+            foreach (string infoTag in info.tag)
+            {
+                foreach (string s in tags)
+                    if (infoTag == s)
+                    {
+                        opened = true;
+                        break;
+                    }
+
+                if (opened) break;
+            }
+
+            if (!opened) continue;
+            if (!found || info.priority > res)
+            {
+                res = info.priority;
+                found = true;
+            }
+        }
+
+        return res;
+    }
+
+    /// <summary>
     /// 追加一条攻击框命中受击框的信息
     /// 这里可不管框active与否
     /// </summary>
@@ -229,7 +265,14 @@ public class CharacterObj : MonoBehaviour
             }
         }
         
-        //命中对方的所有攻击框
+        //命中对方的所有攻击框，冒泡出最有价值的攻击框和受击框
+        AttackHitBox bestAttackBox = null;
+        BeHitBox bestTargetBox = null;
+        AttackBoxTurnOnInfo bestBoxInfo = new AttackBoxTurnOnInfo();
+        BeHitBoxTurnOnInfo bestDefense = new BeHitBoxTurnOnInfo();
+        int bestAttackScore = int.MinValue;
+        int bestDefenseScore = int.MinValue;
+        
         foreach (AttackBoxTurnOnInfo boxInfo in action.ActiveAttackBoxInfo)
         {
             foreach (KeyValuePair<AttackHitBox,List<BeHitBox>> touch in _boxTouches)
@@ -237,34 +280,48 @@ public class CharacterObj : MonoBehaviour
                 //没有启动的攻击框不会判断命中
                 if (!touch.Key.Active) continue;
                 
-                //命中的最有价值的受击框才行
+                //先在这个攻击框命中的一堆受击框里挑出最有价值的那个
                 BeHitBox best = null;
-                int bestPriority = 0;
+                int defenseScore = int.MinValue;
+                BeHitBoxTurnOnInfo defense = new BeHitBoxTurnOnInfo();
                 foreach (BeHitBox hitBox in touch.Value)
                 {
                     if (!hitBox.Active || hitBox.master != target || !hitBox.TagHit(activeBoxTag)) continue;
                     BeHitBoxTurnOnInfo info = GetDefensePhaseByBeHitBox(hitBox);
                     int thisPriority = hitBox.Priority + info.priority;
-                    if (!best || thisPriority > bestPriority)
+                    if (!best || thisPriority > defenseScore)
                     {
                         best = hitBox;
-                        bestPriority = thisPriority;
-                        defensePhase = info;
+                        defenseScore = thisPriority;
+                        defense = info;
                     }
                 }
                 //一个没找到，当然就……
                 if (!best) continue;
                 
-                //就不管攻击框了，本来应该先判断攻击框的，其实也无所谓的
-                attackBox = touch.Key;
-                targetBox = best;
-                if (boxInfo.attackPhase >= 0 && boxInfo.attackPhase < action.CurrentAction.attacks.Length)
-                    attackPhase = action.CurrentAction.attacks[boxInfo.attackPhase];
-                return true;
+                //攻击框的分优先，同分才比受击框的分
+                int attackScore = touch.Key.Priority;
+                bool better = !bestAttackBox || attackScore > bestAttackScore ||
+                              (attackScore == bestAttackScore && defenseScore > bestDefenseScore);
+                if (!better) continue;
+                
+                bestAttackBox = touch.Key;
+                bestTargetBox = best;
+                bestBoxInfo = boxInfo;
+                bestDefense = defense;
+                bestAttackScore = attackScore;
+                bestDefenseScore = defenseScore;
             }
         }
 
-        return false;
+        if (!bestAttackBox) return false;
+        
+        attackBox = bestAttackBox;
+        targetBox = bestTargetBox;
+        defensePhase = bestDefense;
+        if (bestBoxInfo.attackPhase >= 0 && bestBoxInfo.attackPhase < action.CurrentAction.attacks.Length)
+            attackPhase = action.CurrentAction.attacks[bestBoxInfo.attackPhase];
+        return true;
     }
     
 
