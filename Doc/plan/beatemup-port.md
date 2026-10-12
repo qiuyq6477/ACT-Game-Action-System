@@ -187,9 +187,9 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 
 工具在 `Assets/Editor/AnimClipToActionTable.cs`，菜单 `Tools → ACT → 导出 BeatEmUp 帧数据草稿（.anim → 表）`，产出 `Doc/plan/beatemup-anim-dump.md`（335 行，41 条片子逐条：时长、判定盒窗口、精灵可见窗口、盒子位置/缩放轨迹、cue、可疑值）。**输出是草稿不是成品表**——伤害/取消标签/指令/受击阶段在源 clip 里根本没有，那些是玩法决定，由 1.7 填。
 
-换算公式（写在工具头部注释和草稿开头，因为 1.7 填表时没人能独立验它）：本工程第 n 拍覆盖 [(n-1)/60, n/60)，clip 是 60fps 的 0-based ⇒ clip 第 f 帧 = 本工程第 f+1 拍；表里的窗口是「跨过就算数」（生效 = min..max+1）⇒ **min = 抬起帧 + 1，max = 落下帧 − 1**。这样生效集合正好等于源片子里盒子开着的那几帧。
+换算公式（写在工具头部注释和草稿开头，因为 1.7 填表时没人能独立验它）：本工程第 n 拍先 `anim.Update(1/60)` 再 `CurrentFrame++`，所以第 n 拍摆出的姿势就是 clip 的第 n 帧——两边是**恒等**映射，不是 f+1；而表里的窗口是「跨过就算数」（生效 = min..max+1），要正好覆盖源片子里盒子开着的那几帧（on..off−1）就得写 **min = on，max = off − 2**。
 
-这条公式不是推出来的，是对着源工程的读法对出来的：`UnitActions.cs:344` 在 MonoBehaviour 的 Update 里读 `hitBox.gameObject.activeSelf`，而 Animator 在同一帧更早的阶段求值曲线，所以 clip 第 f 帧恰好在第 f 个渲染帧被读到。逐招核过：Punch1 活跃帧 4..9 → 表 [5,9]；Kick1 2..11 → [3,11]；Kick3 4..12 → [5,12]；GroundPunch 10..18 → [11,18]，四个都对得上"生效帧数相等且首帧对齐"。
+这条不是推出来的，是两边各读了一遍代码：源工程在 MonoBehaviour 的 Update 里读 `hitBox.gameObject.activeSelf`（`UnitActions.cs:344`），Animator 在同一帧的更早阶段求值曲线，所以第 f 个渲染帧摆第 f 帧的姿势、也在同一帧判命中；本工程第 n 拍同样摆第 n 帧、同样在这一拍结算命中。逐招核过（左 = 源片子活跃帧，右 = 表里区间，生效集合按 min..max+1 展开）：Punch1 4..9 → [4,8] 生效 4..9；Kick1 2..11 → [2,10] 生效 2..11；Kick3 4..12 → [4,11] 生效 4..12；GroundPunch 10..18 → [10,17] 生效 10..18，四条全都一帧不差。第一版把它写成了 `min = on + 1`（以为拍号比姿势慢一帧），按「生效帧数相等」能对上、按「哪一拍摆哪一帧的姿势」对不上，差的就是那 16.7 毫秒——这条订正在 `5aaaf54`。
 
 三处值得记的做法：
 
