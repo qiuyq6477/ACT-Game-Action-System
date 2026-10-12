@@ -1,6 +1,6 @@
 # ACT 动作系统十项妥协工业级重构规划方案
 
-> 状态：规划中 · 2026-09
+> 状态：Phase 1 已实施 · 2026-10（Phase 2~4 仍为规划中）
 
 本文档针对原工程中存在的十项工程与架构妥协，制定渐进式、低风险、面向商用级动作游戏（如《鬼泣》、《战神》、《街霸》）的工业级重构方案。
 
@@ -57,6 +57,26 @@
 * **重构方案**：
   - 为碰撞标签建立 32 位掩码（`int BoxTagMask`）；
   - 激活时按位或 `activeMask |= info.TagMask`，相交判定时仅执行单条位与指令 `(hitMask & beHitMask) != 0`，内存分配从几百字节降为 0。
+
+#### Phase 1 实施记录（2026-10）
+
+四项都按上面的方案落地了，另外顺带修了方案里没写的一处每帧分配。实际改动：
+
+| 妥协 | 落点 |
+| :--- | :--- |
+| 6 RootMotion | `RootMotionMethod.cs` 改成"每个方法一条注册项：`Bake`（读表期把 `string[]` 翻译成数值）+ `Eval`（每帧按百分比给偏移）"，数值存进 `ActionInfo.rootMotionParam`（`[NonSerialized]`，`GameData.Load` 里赋值）；`ActionController` 换动作时查一次表缓存求值器和数值，每帧两次调用不再有解析和字典查找 |
+| 7 移动意图 | `InputToCommand.IsKeyHeld(KeyMap)`：只看当前这一帧的输入记录（倒序扫到窗口外就收工），保留正反手镜像和 `_newInputs` 兜底，与 `ActionOccur` 单键判定语义一致；`CharacterObj` 的两个 Wish 属性改用它，不再 `new KeyMap[]` |
+| 8 受击动作扫描 | `GameData` 加载期建 `_catalogIndex`（`Dictionary<string, ActionInfo[]>`），查询走 `ActionsOfCatalog`，未命中返回静态空数组；`PickActionMethod` 的候选参数由 `List<ActionInfo>` 改成 `ActionInfo[]` |
+| 9 碰撞标签 | 新增 `BoxTagRegistry` 把标签名单调分配成 32 位掩码里的一位；`Attack/BeHitBoxTurnOnInfo` 加 `[NonSerialized] tagMask`（`GameData.Load` 烘焙），盒子组件的 `TagMask` 由 `CharacterObj.Awake` 顺带烘焙；`ActionController` 的两个 `List<string>` 激活标签换成 `ActiveAttackBoxMask` / `ActiveBeHitBoxMask` |
+| 顺带 | `InputToCommand.cs` 每帧 `new bool[4]` 的 `dirDown` 展开成 4 个局部变量 |
+
+方案里有两处估计需要订正，以免后来的人按错的预期去找收益：
+
+- **妥协 9 的真实 0 GC 收益只有一处**：`CharacterObj.CanAttackTargetNow` 里那个每帧每敌人一次的 `new List<string>()`。其余的 `List<string>.Contains` 和三层字符串比对是**不分配的纯 CPU 开销**，掩码化属于 CPU 优化，不是分配优化。
+- 妥协 6 的 `float.Parse` 同样不产生分配（string 早已存在），它省的是 CPU 和一次区域文化敏感的扫描。
+- `foreach` 遍历结构体数组时**不允许**改元素的成员（CS1654），所以烘焙 RootMotion 数值必须先拷一份局部变量；改阶段数组的元素则用带索引的 `for`（数组本身是引用类型，改元素就改到了共享的那份表）。
+
+已知未处理项：调试用的输入面板每帧重建字符串（`GameMain.cs:67` → `InputToCommand.InputText()`），是 Phase 1 之后最大的每帧分配源，属表现层，登记在 `Doc/issue/ui-inputtext-per-frame-alloc.md`。
 
 ---
 
@@ -132,7 +152,7 @@
 
 | 阶段 | 实施任务 | 预计改动代码 | 验证方式 |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | 治理妥协 6、7、8、9（0 GC 热点优化） | `RootMotionMethod.cs`<br>`CharacterObj.cs`<br>`ActionController.cs` | 使用 Unity Profiler 观察 GC Alloc，在持续攻击与连击过程中 GC Alloc 维持为 0 Byte。 |
+| **Phase 1** | 治理妥协 6、7、8、9（0 GC 热点优化）· **已实施** | `RootMotionMethod.cs`<br>`CharacterObj.cs`<br>`ActionController.cs`<br>`GameData.cs`<br>`InputToCommand.cs`<br>`Boxes/BoxTagRegistry.cs` | 用 `Assets/Scripts/GcProbe.cs` 的分区探针看：动作推进、判定盒计算、按分类选动作、命中判定、移动意图、输入刷新这 6 个分区 **max = 0 B/帧**。判据是分区归零而不是整帧归零——调试用的输入面板仍在每帧拼字符串（`Doc/issue/ui-inputtext-per-frame-alloc.md`）。Unity 2023.2 已经没有 `Profiler.GetAllocatedBytesForCurrentThread`，所以探针取 `Profiler.GetMonoUsedSizeLong()` 的区间差值。 |
 | **Phase 2** | 治理妥协 1、2、4（时基、物理、地形） | `CharacterObj.cs`<br>`ActionController.cs`<br>`GameMain.cs` | 在 30 FPS、60 FPS 与 120 FPS 下测试跳跃高点与 Cancel 窗口，手感完全无缝且判定一致。 |
 | **Phase 3** | 治理妥协 5、10（伤害、霸体、碰撞加速） | `GameMain.cs`<br>`CharacterObj.cs` | 攻击敌人时出现伤害飘字、韧性打崩击退、以及霸体霸体硬抗动作反馈。 |
 | **Phase 4** | 治理妥协 3（实体管理与对象池） | `GameMain.cs`<br>`EntityManager.cs` | 场景可动态生成并回收 20+ 个怪物，帧率平稳不卡顿。 |

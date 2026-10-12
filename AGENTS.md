@@ -27,3 +27,7 @@
 ## Development Conventions
 
 - **Commits:** Conventional Commits — `<type>(<scope>): <subject>` (feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert). Subject = one-line summary; body = bullet points, one per change (`- ...`); link related post-mortems as a bullet (`- post-mortem: doc/bugfix/<file>.md`).
+
+## Module Index
+
+- `Assets/Scripts/AGENTS.md` — 动作系统逻辑脚本（角色 / 动作控制器 / 判定盒 / 表函数）：热路径 0 分配、表数据在 `GameData.Load` 里烘焙、box tag 位掩码规则、`GcProbe` 验证方式。
