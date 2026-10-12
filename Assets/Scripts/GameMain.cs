@@ -78,9 +78,11 @@ public class GameMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→命中结算→计时与移动。
+    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→命中结算→计时与移动→同轨推挤。
     /// 以前这五家各写各的Update，谁先谁后由Unity决定，同一份代码换台机器就会差一帧。
     /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）
+    /// 同轨推挤放在最后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
+    /// 地面探测算出的 groundY 与 z 无关，所以推完不用再探地
     /// </summary>
     private void TickAll()
     {
@@ -100,6 +102,8 @@ public class GameMain : MonoBehaviour
             c.Tick();
             GcProbe.End(GcProbe.Region.CharacterTick, gcProbe);
         }
+
+        CharacterObj.SeparateLanes(_all);
     }
 
     private static void TickBoxes(CharacterObj c)

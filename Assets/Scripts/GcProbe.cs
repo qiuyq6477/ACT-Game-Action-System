@@ -26,6 +26,7 @@ public static class GcProbe
         NatureMove,
         InputUpdate,
         CharacterTick,
+        LaneSeparate,
         Count
     }
 

@@ -10,9 +10,15 @@ using UnityEngine;
 public struct RootMotionParam
 {
     /// <summary>
-    /// 走完的总位移，横版里就是x方向的米数
+    /// 走完的总位移：正身方向（角色朝向那一侧的 x）的米数
     /// </summary>
     public float totalDis;
+
+    /// <summary>
+    /// 纵深（屏幕空间 z）的米数。它是屏幕轴，不随正反手翻转，
+    /// 所以横版里"斜向前冲"= totalDis 给正身、depthDis 给画面里外
+    /// </summary>
+    public float depthDis;
 
     /// <summary>
     /// 走到第几逻辑帧才开始位移（前摇）
@@ -80,14 +86,18 @@ public static class RootMotionMethod
         p.totalDis = ParseAt(param, 0, 0f);
         p.startFrame = ParseAt(param, 1, 0);
         p.endFrame = ParseAt(param, 2, durationFrames);
+        //第四个参数是纵深（z）米数。老表只填到第三个，缺省给 0 ⇒ 现有 13 条动作的逐帧位移一个都没变
+        p.depthDis = ParseAt(param, 3, 0f);
         return p;
     }
 
     private static Vector3 EvalGoStraight(int frame, RootMotionParam p)
     {
-        return frame <= p.startFrame ? Vector3.zero :
-            frame >= p.endFrame ? new Vector3(p.totalDis, 0, 0) :
-                new Vector3(frame / (float)p.durationFrames * p.totalDis, 0, 0);
+        if (frame <= p.startFrame) return Vector3.zero;
+        //线性段仍然按"占整个动作的比例"给位移（表作者当年的写法，前摇到线性段之间有个跳变，
+        //Phase 2 刻意原样保留）。x 与 z 走同一条比例曲线，所以一条 GoStraight 就能配出斜向前冲
+        float pec = frame >= p.endFrame ? 1f : frame / (float)p.durationFrames;
+        return new Vector3(pec * p.totalDis, 0f, pec * p.depthDis);
     }
 
     private static float ParseAt(string[] param, int index, float defaultValue)

@@ -101,9 +101,30 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     public float moveSpeed;
 
+    /// <summary>
+    /// 纵深（车道）移动速度相对 moveSpeed 的比例。
+    /// 纵深位移在屏幕上被透视压缩过，1:1 会显得比横向快；BeatEmUp 的原版把输入的 y 乘 0.8，这里沿用
+    /// </summary>
+    public float depthSpeedRate = 0.8f;
+
+    /// <summary>
+    /// 角色在车道上的半径（米）：横向多近算"同一轨"、纵向至少要隔多远，都由它和对方的它相加得出。
+    /// 角色根节点上没有碰撞体（位移是直写 transform 的），所以同轨推挤只能自己算
+    /// </summary>
+    public float laneRadius = 0.3f;
+
     private bool WishToMoveForward => input.IsKeyHeld(KeyMap.Forward);
 
     private bool WishToMoveBackward => input.IsKeyHeld(KeyMap.Backward);
+
+    /// <summary>
+    /// 屏幕上方 = 远离镜头 = +z（HD-2D 的纵深车道，见 Doc/decision/0002）。
+    /// 用的还是 KeyMap.Up/Duck 这两个值：竖轴本来就是"屏幕纵向"，横版里地面上一切纵向输入都是纵深。
+    /// 它们不参与正反手镜像（GetKeyInput 里只有 Forward↔Backward），所以朝左朝右走出来的车道方向一致
+    /// </summary>
+    private bool WishToMoveFar => input.IsKeyHeld(KeyMap.Up);
+
+    private bool WishToMoveNear => input.IsKeyHeld(KeyMap.Duck);
 
     /// <summary>
     /// 自然的移动，而非ForceMoved。返回的是这一个逻辑帧的位移
@@ -112,12 +133,15 @@ public class CharacterObj : MonoBehaviour
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.NatureMove);
         //moveSpeed是米/秒、_curWeight是米/逻辑帧累加出来的速度，都只在算位移这一处乘Tick
+        //纵深项不乘 Inversed 的符号：那是屏幕空间轴，跟角色朝哪边无关
+        float depthMove = (WishToMoveFar ? 1f : WishToMoveNear ? -1f : 0f) *
+                          moveSpeed * depthSpeedRate * action.MoveInputAcceptance * LogicClock.Tick;
         Vector3 moved = new Vector3(
             ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) :
                 WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) : 0) + action.RootMotionMove.x) *
             (Inversed ? -1 : 1),
             action.RootMotionMove.y - _curWeight * LogicClock.Tick,   //unity的坐标系y是反过来的
-            action.RootMotionMove.z
+            depthMove + action.RootMotionMove.z
         );
         GcProbe.End(GcProbe.Region.NatureMove, gcProbe);
         return moved;
@@ -196,6 +220,9 @@ public class CharacterObj : MonoBehaviour
         Vector3 moved = ThisTickMove();
         Vector3 to = was + moved;
 
+        //关卡边界要先夹，再拿夹过的坐标去探测脚下那一列——反过来会探到一列根本不存在的地面
+        if (LevelBounds.Current) LevelBounds.Current.Clamp(ref to);
+
         float groundY;
         if (ProbeGround(was, to, out groundY))
         {
@@ -253,6 +280,44 @@ public class CharacterObj : MonoBehaviour
 
         groundY = originY - radius - hit.distance;
         return true;
+    }
+
+    /// <summary>
+    /// 同一条纵深车道上的角色互相推开，只动 z。
+    /// 为什么要推：清版游戏里小兵叠成一团，既看不出还剩几个，也让"要站对齐了才打得到"这条手感失效。
+    /// BeatEmUp 原版不分离，只靠 AI 各自挑车道错峰，人一多照样重影。
+    /// 【跑在所有角色的 Move() 之后】：这里改的是 z，而地面探测只按 x/z 取脚下那一列、
+    /// 算出的 groundY 与 z 无关，所以推完不必再探一次地。但关卡边界要到下一拍的 Move() 里才会重新夹住
+    /// </summary>
+    /// <param name="all">场上全部角色，顺序即优先级：完全重位时靠这个顺序定死谁往后退</param>
+    public static void SeparateLanes(CharacterObj[] all)
+    {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.LaneSeparate);
+        for (int i = 0; i < all.Length; i++)
+        {
+            CharacterObj a = all[i];
+            if (!a) continue;
+            for (int j = i + 1; j < all.Length; j++)
+            {
+                CharacterObj b = all[j];
+                if (!b) continue;
+
+                float need = a.laneRadius + b.laneRadius;
+                Vector3 pa = a.transform.position;
+                Vector3 pb = b.transform.position;
+                //两个轴用的是同一个方形footprint：横向没贴近就当不同轨，纵向已经隔开就不用推
+                if (Mathf.Abs(pa.x - pb.x) >= need || Mathf.Abs(pa.z - pb.z) >= need) continue;
+
+                float dz = pb.z - pa.z;
+                //两人完全重合时方向是未定义的，用数组顺序定死一个符号，
+                //否则同一份输入换台机器可能推出两种结果，这是本工程最不能容忍的不确定
+                float sign = dz > 0f ? 1f : dz < 0f ? -1f : 1f;
+                float push = (need - Mathf.Abs(dz)) * 0.5f;
+                a.transform.position = new Vector3(pa.x, pa.y, pa.z - sign * push);
+                b.transform.position = new Vector3(pb.x, pb.y, pb.z + sign * push);
+            }
+        }
+        GcProbe.End(GcProbe.Region.LaneSeparate, gcProbe);
     }
 
     /// <summary>

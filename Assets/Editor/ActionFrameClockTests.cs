@@ -9,11 +9,14 @@ using UnityEngine;
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的四件事：
+/// 钉的五件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
 /// 4. 渲染帧率到逻辑帧率的换算，以及RootMotion位移，都只取决于帧号而不取决于时间。
+/// 5. 纵深车道（BeatEmUp 移植新增）：z 只由竖轴驱动、不随正反手镜像，且与横向共用同一个
+///    inputAcceptance；RootMotion 的第四个参数缺省为 0（老表逐项不变）；同轨推挤只动 z，
+///    重合时的方向由数组顺序定死。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。判定盒刷新和命中结算两拍不在这里跑——它们读的就是这里断言的那两个掩码。
@@ -25,6 +28,7 @@ public class ActionFrameClockTests
     private GameObject _rig;
     private ActionController _action;
     private InputToCommand _input;
+    private CharacterObj _character;
 
     [SetUp]
     public void SetUp()
@@ -36,6 +40,7 @@ public class ActionFrameClockTests
         _rig.name = "ACT-Test-Rig";
         _rig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
         CharacterObj character = _rig.GetComponent<CharacterObj>();
+        _character = character;
         _action = character.action;
         _input = character.input;
     }
@@ -473,5 +478,155 @@ public class ActionFrameClockTests
         }
         Tick();
         Assert.AreEqual(frameBefore + 4, _action.CurrentFrame, "7拍走满（3+4）才继续");
+    }
+
+    //==================================== 10. 纵深车道（BeatEmUp 移植新增） ====================================
+
+    /// <summary>
+    /// 走满一整拍：连角色的移动也跑，顺序照 GameMain.TickAll（输入→动作→计时与移动）。
+    /// 前面的用例只跑到动作拍为止，因为它们断言的是盒子和帧号；这里要断言的是坐标
+    /// </summary>
+    private void TickWhole(params KeyMap[] pressed)
+    {
+        LogicClock.Advance();
+        _input.Tick();
+        for (int i = 0; i < pressed.Length; i++) _input.AddInput(pressed[i]);
+        _action.Tick();
+        _character.Tick();
+    }
+
+    /// <summary>
+    /// 正手：按着前进与屏幕上方十拍，纵深走满 10×每拍位移（屏幕上方 = 远离镜头 = +z），横向仍按原公式走。
+    /// 【为什么要连方向键一起按】：表里 BoxingMoveForward 的 autoTerminate 是 true，
+    /// 没有匹配的 Forward 指令时第一拍就跳回 BoxingStand（acceptance 0），纵深只会走一拍。
+    /// 【为什么拆成三个用例而不是一个用例走三段】：输入历史保留 72 个逻辑帧，同一个 rig 里
+    /// 换了正反手，上一段按过的键还会继续参与指令匹配，第二段的期望值会被它污染
+    /// </summary>
+    [Test]
+    public void DepthMovesAwayFromCameraWhenFacingRight()
+    {
+        float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
+        float walkPerTick = _character.moveSpeed * LogicClock.Tick;
+
+        StartAction("BoxingMoveForward");
+        Vector3 from = _rig.transform.position;
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Up);
+        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕上方十拍，纵深必须走满 10×每拍位移");
+        Assert.AreEqual(from.x + 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "横向仍按原来的公式走，纵深项不该掺进去");
+    }
+
+    /// <summary>
+    /// 反手（面朝左）：纵深仍然是 +z，只有横向翻成 -x。
+    /// 这条钉的是 Doc/decision/0002 里"纵深是屏幕空间轴、永不镜像"那句——
+    /// NatureMove 里横向那项乘了 Inversed 的符号，纵深项没乘。
+    /// 写反了角色一转身就跑进错误的车道，而这种错肉眼只看得出"手感怪"，是最难查的一类
+    /// </summary>
+    [Test]
+    public void DepthDoesNotMirrorWhenFacingLeft()
+    {
+        float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
+        float walkPerTick = _character.moveSpeed * LogicClock.Tick;
+
+        _character.Inversed = true;
+        StartAction("BoxingMoveForward");
+        Vector3 from = _rig.transform.position;
+        //反手时物理上按的是 Backward，经 GetKeyInput 镜像成大脑血管里的"前进"，所以动作照样能自取消撑住
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Backward, KeyMap.Up);
+        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "反手时纵深不镜像，符号不能翻");
+        Assert.AreEqual(from.x - 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "反手时前进应当往 -x 走");
+    }
+
+    /// <summary>
+    /// 屏幕下方 = 靠近镜头 = -z
+    /// </summary>
+    [Test]
+    public void DepthMovesTowardCameraWhenHoldingDown()
+    {
+        float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
+
+        StartAction("BoxingMoveForward");
+        Vector3 from = _rig.transform.position;
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Duck);
+        Assert.AreEqual(from.z - 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕下方应当往镜头这侧走");
+    }
+
+    /// <summary>
+    /// 纵深和横向共用同一个 inputAcceptance：一个"停止双腿"的动作同时锁住两根轴。
+    /// 表里 Punch1 没有 inputAcceptance（倍率 0），所以按住任何方向都不该动
+    /// </summary>
+    [Test]
+    public void DepthRespectsTheSameInputAcceptanceAsHorizontal()
+    {
+        StartAction("Punch1");
+        Assert.AreEqual(0f, _action.MoveInputAcceptance, 1e-6f, "出招当中移动接受度是 0，前提先钉住");
+
+        Vector3 from = _rig.transform.position;
+        for (int i = 0; i < 6; i++) TickWhole(KeyMap.Up, KeyMap.Forward);
+        Assert.AreEqual(from.z, _rig.transform.position.z, 1e-6f, "接受度为 0 的时候纵深不许动");
+        Assert.AreEqual(from.x, _rig.transform.position.x, 1e-6f, "接受度为 0 的时候横向也不许动");
+    }
+
+    /// <summary>
+    /// GoStraight 的第四个参数是纵深米数。【老表只填到第三个参数，缺省必须是 0】——
+    /// 现有 13 条动作的逐帧位移一个都不许变，否则第 6 条用例钉住的手感就作废了
+    /// </summary>
+    [Test]
+    public void GoStraightCarriesDepthOnlyWhenTheFourthParamIsGiven()
+    {
+        RootMotionFunc func = RootMotionMethod.Methods["GoStraight"];
+
+        RootMotionParam old = RootMotionMethod.Bake("GoStraight", new[] { "0.2", "5", "8" }, 38);
+        for (int frame = 1; frame <= 38; frame++)
+            Assert.AreEqual(0f, func.Eval(frame, old).z, 0f, "三个参数的老写法，纵深恒为 0");
+
+        RootMotionParam deep = RootMotionMethod.Bake("GoStraight", new[] { "0.2", "5", "8", "0.1" }, 38);
+        Assert.AreEqual(0.1f, func.Eval(38, deep).z, 1e-5f, "走满之后纵深应当正好是表里的 0.1 米");
+        Assert.AreEqual(func.Eval(38, deep).x * 0.5f, func.Eval(38, deep).z, 1e-5f,
+            "x 与 z 走同一条比例曲线：同一时刻两者的进度比例相同");
+        //前摇那一拍两者都还是 0，斜向冲刺不会在起跳前偷跑
+        Assert.AreEqual(0f, func.Eval(5, deep).z, 0f, "第 5 帧之前纵深不前进");
+    }
+
+    /// <summary>
+    /// 同轨推挤：只动 z、不动 x/y，两个角色各推一半，合起来刚好隔出一个 need。
+    /// 完全重合时方向由数组顺序定死——同一份输入必须每次跑出同样的结果，
+    /// 这是本工程最硬的约束（换台机器、换渲染帧率都不许变）
+    /// </summary>
+    [Test]
+    public void SeparateLanesPushesAlongZOnlyAndIsDeterministic()
+    {
+        GameObject secondRig = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
+        secondRig.name = "ACT-Test-Rig-2";
+        secondRig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        try
+        {
+            CharacterObj a = _character;
+            CharacterObj b = secondRig.GetComponent<CharacterObj>();
+            float need = a.laneRadius + b.laneRadius;
+
+            //不同轨（横向已经隔开）：不该推
+            a.transform.position = new Vector3(0f, 0f, 0f);
+            b.transform.position = new Vector3(need, 0f, 0f);
+            CharacterObj.SeparateLanes(new[] { a, b });
+            Assert.AreEqual(0f, a.transform.position.z, 1e-6f, "横向没贴近就算不同轨，不用推");
+
+            //同一轨、纵向重合：各推一半，只动 z
+            a.transform.position = new Vector3(1.5f, 0.25f, -2f);
+            b.transform.position = new Vector3(1.5f, 0.25f, -2f);
+            CharacterObj.SeparateLanes(new[] { a, b });
+            Assert.AreEqual(1.5f, a.transform.position.x, 1e-6f, "推挤不许动 x");
+            Assert.AreEqual(0.25f, a.transform.position.y, 1e-6f, "推挤不许动 y（高度归地面探测管）");
+            Assert.AreEqual(-2f - need * 0.5f, a.transform.position.z, 1e-5f, "数组里靠前的那个往近侧退");
+            Assert.AreEqual(-2f + need * 0.5f, b.transform.position.z, 1e-5f, "靠后的那个往远侧退");
+            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-5f, "两人正好隔开一个 need");
+
+            //再推一次不该继续叠加
+            CharacterObj.SeparateLanes(new[] { a, b });
+            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-5f, "已经隔开了就不再推");
+        }
+        finally
+        {
+            Object.DestroyImmediate(secondRig);
+        }
     }
 }

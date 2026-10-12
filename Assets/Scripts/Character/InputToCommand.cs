@@ -64,6 +64,10 @@ public class InputToCommand : MonoBehaviour
         bool yHasInput = Mathf.Abs(yInput) >= deadArea;
 
         //上下左右4个方向，每帧都走这里，所以不能是数组（原来的 new[] 就是每帧一次分配）
+        //竖轴在这个游戏里是【纵深车道】，不是上段/下段（HD-2D 的约定，见 Doc/decision/0002）：
+        //屏幕上方 = 远离镜头。值仍然叫 Up/Duck——它们就是小键盘的 8/2（屏幕纵向），
+        //而且 GetKeyInput 本来就不镜像这两个，正是纵深需要的性质。
+        //表里用 ↓↘→ 这类竖轴指令的招式（比如 TwinKick）因此照常可搓，语义变成"从近侧车道绕过来"
         _sUp = yHasInput && yInput > 0;
         _sDuck = yHasInput && yInput < 0;
         _sBack = xHasInput && xInput < 0;

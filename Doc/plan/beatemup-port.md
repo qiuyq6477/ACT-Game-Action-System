@@ -137,4 +137,31 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 5. 同屏 20+ 敌兵时 `SyncTransforms` + 每盒一次 overlap 的开销待实测（`GcProbe` 只量分配不量 CPU）。
 6. BeatEmUp 的敌兵与玩家**共用同一个 AnimatorController**（`Enemy.prefab` 的 `m_Controller` GUID 与 `Player.controller` 相同，敌兵招式表里填的就是玩家状态名）⇒ 做外观/招式不同的 Boss 要复制控制器并同步状态名，而"所有角色共用一张动作表"的前提一旦动摇，`GameData.ActionsOfCatalog` 的倒排索引必须下移到 `ActionController`（`GameData.cs:64-66`）。
 
+## 八、Step 1 实施记录（滚动更新）
+
+### 切片 1.1 面向抽象 · 已实施 · 2026-10
+
+`ActionController.cs` 里写死的 `transform.eulerAngles = (0, 270|90, 0)` 换成角色身上的 `FacingApply`（两种落地：`ModelYaw` / `SpriteScaleX`）。选 `localScale.x` 取反而不是 `SpriteRenderer.flipX`，是因为判定盒和将来的武器挂点都是子节点——flipX 只翻贴图不翻子树，出招的盒子会留在错误的一侧。**换动作那一拍的时机逐字未动**（仍在 `_wasFrame = CurrentFrame = startFrame` 之后、`aInfo.flip` 之前），所以 `flip` 语义不变。
+
+拆出去的一条：原计划把"精灵贴到 3D 平面 + 按 Z 排序 + PPU 标定"也放在 1.1，但没有真实素材无法验收，挪进了 1.7。
+
+### 切片 1.2 纵深车道 · 已实施 · 2026-10
+
+**没有新增 KeyMap**——这是与本文件第三节原方案的一处有意偏离，原因是发现竖轴可以直接复用：竖轴采样本来产出 `KeyMap.Up`(8) / `KeyMap.Duck`(2)，而这两个值①本来就不参与 `GetKeyInput` 的正反手镜像（正是纵深需要的性质），②表里用它们的招式（TwinKick 的 `[2,3,6,101]`）因此照常可搓，语义变成"从近侧车道绕过来"。再加一对 `DepthFar/DepthNear` 只会让同一根轴有两套名字。
+
+落地清单：`NatureMove` 的 z 项 = `(Up?1:Duck?-1:0) × moveSpeed × depthSpeedRate × MoveInputAcceptance × Tick + RootMotionMove.z`，横向那个 `Inversed` 符号不乘它；`GoStraight` 增加可选 `param[3]`（纵深米数，缺省 0），13 条老表项的逐帧位移逐项不变；`CharacterObj.SeparateLanes` 成为 `TickAll` 的第六拍（只动 z，完全重合时方向由数组顺序定死以保证确定性）；新建 `LevelBounds`，为 null 时不夹，所以老场景与编辑期用例的行为一项没变。
+
+**验证**：`ActionFrameClockTests` 从 9 条加到 15 条全绿。其中两条是踩出来的，值得留给后来人：
+
+- 只按竖轴测不出纵深——`BoxingMoveForward` 的 `autoTerminate` 是 true，没有匹配的 Forward 指令时第一拍就跳回 `BoxingStand`（acceptance 0），纵深只走一拍。用例必须连方向键一起按。
+- 三段不能共用一个 rig：输入历史保留 72 个逻辑帧，中途换正反手后上一段按过的键还会参与指令匹配，把下一段的期望值污染掉（实测少走两拍）。所以拆成三个独立用例。
+
+Play Mode 稳态（约 30 秒、三个窗口）八个分区全部 `avg=0 max=0`，含新增的 `LaneSeparate`（n=172），自检 1056B 证明计数器是活的。启动那两个窗口里的非零都是常驻 List 的头几次扩容（`max=1056` 正好是 64 个 16 字节的 `KeyInputRecord` 加对象头）。
+
+### 顺带：恢复闸门
+
+回归时撞上 `RepeatedHitRefreshesHitstopWithoutChangingAction` 在 HEAD 上就是红的（做过 A/B：摘掉移植改动重跑，同样红，与本次工作无关）。根因是用例从第 449 行起把被冻住的拍也算进了前进数，四处期望常数各多一拍；实现本身自洽、且符合 `refactor.md` 写的"取较大者只是把剩余硬重置满"，所以只改测试常数。九个用例恢复全绿，后面顿挫相关的切片（1.3、1.5、1.9）才有闸门可用。
+
+---
+
 相关文档：`refactor.md`（Phase 3/4 随本期落地）、`../decision/0001-帧数据真源在表不在动画.md`、`../decision/0002-HD-2D世界约定.md`
