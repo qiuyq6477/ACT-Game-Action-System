@@ -8,9 +8,9 @@
 public struct AttackBoxTurnOnInfo
 {
     /// <summary>
-    /// 开启的时间段
+    /// 开启的时间段（逻辑帧），可以分为多段
     /// </summary>
-    public PercentageRange[] inPercentage;
+    public FrameRange[] inFrames;
 
     /// <summary>
     /// 要开启的攻击盒的tag

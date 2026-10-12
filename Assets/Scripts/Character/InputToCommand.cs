@@ -136,7 +136,12 @@ public class InputToCommand : MonoBehaviour
         GcProbe.End(GcProbe.Region.InputUpdate, gcProbe);
     }
 
-    private void AddInput(KeyMap key)
+    /// <summary>
+    /// 把一个按键登记在"当前逻辑帧"上。
+    /// 键盘采样走这里，测试和以后的AI、回放也走这里——逻辑层只认"第几帧按了什么"，不认输入设备
+    /// </summary>
+    /// <param name="key">按下的键</param>
+    public void AddInput(KeyMap key)
     {
         KeyInputRecord kir = new KeyInputRecord(key, LogicClock.Frame);
         _input.Add(kir);

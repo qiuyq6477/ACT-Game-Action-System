@@ -14,14 +14,16 @@ public struct PreorderActionInfo
     public int Priority;
 
     /// <summary>
-    /// 动作融合的百分比时间
+    /// 动画融合长度，已经是"占目标动作时长的比例"，直接喂CrossFade。
+    /// 【为什么不是逻辑帧】：它是表现层API的实参量纲；算它要把被取消动作的fadeOut和新动作的fadeIn取小，
+    /// 两者各以自己的时长为标尺，只有归一化后才可比，再乘回目标时长只是除一遍又乘一遍。
     /// </summary>
     public float TransitionNormalized;
 
     /// <summary>
-    /// 新的action对应的动画，从百分之多少的位置开始播放
+    /// 新的action对应的动画，从第几个逻辑帧开始播放
     /// </summary>
-    public float FromNormalized;
+    public int FromFrame;
 
     /// <summary>
     /// 当切换动作后，会立即硬直多久
@@ -36,12 +38,12 @@ public struct PreorderActionInfo
     public int FreezingAfterChangeAction;
 
     public PreorderActionInfo(string actionId, int priority = 0, float transitionNormalized = 0,
-        float fromNormalized = 0, int freezingAfterChangeAction = 0)
+        int fromFrame = 0, int freezingAfterChangeAction = 0)
     {
         ActionId = actionId;
         Priority = priority;
         TransitionNormalized = transitionNormalized;
-        FromNormalized = fromNormalized;
+        FromFrame = fromFrame;
         FreezingAfterChangeAction = freezingAfterChangeAction;
     }
 

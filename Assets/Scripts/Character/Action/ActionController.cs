@@ -40,16 +40,26 @@ public class ActionController : MonoBehaviour
     private List<PreorderActionInfo> _preorderActions = new List<PreorderActionInfo>();
 
     /// <summary>
-    /// 这个动作在上一个update经历了多少百分比了
+    /// 当前动作走到第几个逻辑帧（0起，动作自己的时钟）
     /// </summary>
-    private float _wasPercentage = 0;
+    public int CurrentFrame { get; private set; }
 
     /// <summary>
-    /// 当前动作的RootMotion求值器：输入动作进行到的百分比，输出从动作起点累计到该百分比的偏移量。
+    /// 推进本帧之前时钟在哪一帧，窗口判定用的是"这一段区间被跨过没有"，所以两个都要
+    /// </summary>
+    private int _wasFrame = 0;
+
+    /// <summary>
+    /// 当前动作一共多少逻辑帧，换动作时从表里取，是全工程唯一的动作时长真源
+    /// </summary>
+    private int _durationFrames = 1;
+
+    /// <summary>
+    /// 当前动作的RootMotion求值器：输入动作走到第几个逻辑帧，输出从动作起点累计到该帧的偏移量。
     /// null代表这个动作没有RootMotion位移。
     /// 换动作的时候查一次表存下来，免得每帧拿方法名去字典里翻两遍
     /// </summary>
-    private Func<float, RootMotionParam, Vector3> _rootMotionEval = null;
+    private Func<int, RootMotionParam, Vector3> _rootMotionEval = null;
 
     /// <summary>
     /// 当前动作的RootMotion数值，在GameData.Load里就烘焙好了，这里只是把结构体拷一份
@@ -108,16 +118,18 @@ public class ActionController : MonoBehaviour
     private Action<ActionInfo, ActionInfo> _onChangeAction = null;
 
     /// <summary>
-    /// 当前动画百分比，放这里方便些，其实最好放一个函数里
-    /// 但是因为要访问动画百分比的频率较高，不如就一次性了
+    /// Animator降级成本时钟的从属：不再由Unity按渲染帧自己推进，只在Tick里被显式步进一个逻辑帧。
+    /// 于是"逻辑认为在第几帧"和"屏幕上是第几帧的姿势"是同一个数，漂移在构造上为0，
+    /// 硬直也变成精确的"不步进"（原来是 anim.speed = 0，还会照常求值一遍姿势）
     /// </summary>
-    private float _pec = 0;
-    
+    private void Awake()
+    {
+        anim.enabled = false;
+    }
+
     /// <summary>
     /// 推进一个逻辑帧。这里不再是Unity的Update回调，而由GameMain的时钟按固定顺序调用，
     /// 顺序是：输入 → 本方法 → 判定盒 → 命中结算 → 角色计时与移动
-    /// 动作进度目前仍然读Animator的normalizedTime（Phase 2第3步换成整型逻辑帧），
-    /// 但硬直的倒数已经跟渲染帧率无关了
     /// </summary>
     public void Tick()
     {
@@ -125,51 +137,50 @@ public class ActionController : MonoBehaviour
         if (AllActions.Count <= 0) return;
         long gcProbe = GcProbe.Begin(GcProbe.Region.ActionControllerUpdate);
         
-        //根据硬直来调整倍率
-        anim.speed = Freezing ? 0 : 1;
+        //硬直：本tick既不推进动作时钟，也不步进Animator。先取快照再倒数，为的是和今天
+        //"这一帧的speed由这一帧开头的_freezing决定"对齐
+        bool frozen = Freezing;
         if (_freezeFrames > 0) _freezeFrames--;
-        
-        //因为动作融合，所以我们优先取下一个动作的normalized当做百分比进度
-        AnimatorStateInfo asInfo = anim.GetCurrentAnimatorStateInfo(0);
-        AnimatorStateInfo nextStateInfo = anim.GetNextAnimatorStateInfo(0);
-        //获得现在的百分比时间，因为会大于等于100%（你敢信，这就是Unity这个愚蠢做法的无奈之处）所以要clamp一下
-        _pec = Mathf.Clamp01(nextStateInfo.length > 0 ? nextStateInfo.normalizedTime : asInfo.normalizedTime);
+        if (!frozen)
+        {
+            anim.Update(LogicClock.Tick);
+            CurrentFrame++;
+        }
         
         //算一下攻击盒跟受击盒
-        CalculateBoxInfo(_wasPercentage, _pec);
+        CalculateBoxInfo(_wasFrame, CurrentFrame);
         
         //移动输入接受
-        CalculateInputAcceptance(_wasPercentage, _pec);
+        CalculateInputAcceptance(_wasFrame, CurrentFrame);
         
         //算一下2帧之间的RootMotion变化
         if (_rootMotionEval != null)
         {
-            Vector3 rmThisTick = _rootMotionEval(_pec, _rootMotionParam);
-            Vector3 rmLastTick = _rootMotionEval(_wasPercentage, _rootMotionParam);
+            Vector3 rmThisTick = _rootMotionEval(CurrentFrame, _rootMotionParam);
+            Vector3 rmLastTick = _rootMotionEval(_wasFrame, _rootMotionParam);
             RootMotionMove = rmThisTick - rmLastTick;
-            //Debug.Log("RootMotion distance " + RootMotionMove + "=>" + pec + " - " + _wasPercentage);
+            //Debug.Log("RootMotion distance " + RootMotionMove + "=>" + CurrentFrame + " - " + _wasFrame);
         }else RootMotionMove = Vector3.zero;
         
-        //动作是否要更换了，最终我们为了偷懒，而妥协了引擎的依赖于动画的思路了
-        //当然，这只是因为这是个demo，如果正式开发游戏，就要斟酌一下，毕竟自己写一个，可以手感提高不少
-        //但是手感的提高，玩家是未必能体验出来的
-        //开始观察每个动作，如果他们可以cancel当前动作，并且操作存在，那么就会添加到预约列表里面
+        //动作是否要更换了：观察每个动作，如果他们可以cancel当前动作，并且操作存在，
+        //那么就会添加到预约列表里面。硬直期间这个扫描照旧每tick都跑（今天就是这个行为）
         foreach (ActionInfo action in AllActions)
         {
-            if (CanActionCancelCurrent(action, _pec, true, out BeCancelledTag bcTag, out CancelTag cancelTag))
+            if (CanActionCancelCurrent(action, CurrentFrame, true, out BeCancelledTag bcTag, out CancelTag cancelTag))
             {
                 _preorderActions.Add(new PreorderActionInfo(action.id, bcTag.priority + cancelTag.priority + action.priority,
-                    Mathf.Min(bcTag.fadeOutPercentage, cancelTag.fadeInPercentage), cancelTag.startFromPercentage));
+                    Mathf.Min((float)bcTag.fadeOutFrames / _durationFrames, (float)cancelTag.fadeInFrames / action.durationFrames),
+                    cancelTag.startFromFrame));
             }
         }
         
         //如果要更换了就预约下一个动作
-        if (_preorderActions.Count <= 0 && (_pec >= 1 || CurrentAction.autoTerminate))
+        if (_preorderActions.Count <= 0 && (CurrentFrame >= _durationFrames || CurrentAction.autoTerminate))
         {
             _preorderActions.Add(new PreorderActionInfo(CurrentAction.autoNextActionId));
         }
         
-        _wasPercentage = _pec;   //先设置这个，之后可能会被ChangeAction所改变
+        _wasFrame = CurrentFrame;   //先设置这个，之后可能会被ChangeAction所改变
         if (_preorderActions.Count > 0)
         {
             int bestIndex = 0;
@@ -185,10 +196,10 @@ public class ActionController : MonoBehaviour
 
             PreorderActionInfo best = _preorderActions[bestIndex];
             if (best.ActionId == CurrentAction.id && CurrentAction.keepPlayingAnim)
-                KeepAction(_pec);
+                KeepAction();
             else
                 ChangeAction(best.ActionId, best.TransitionNormalized,
-                    best.FromNormalized, best.FreezingAfterChangeAction);
+                    best.FromFrame, best.FreezingAfterChangeAction);
         }
         
         //清理一下预约列表
@@ -205,24 +216,24 @@ public class ActionController : MonoBehaviour
         _onChangeAction = onActionChanged;
     }
 
-    public void CalculateInputAcceptance(float wasPec, float pec)
+    public void CalculateInputAcceptance(int wasFrame, int frame)
     {
         MoveInputAcceptance = 0;
         if (CurrentAction.inputAcceptance == null) return;
         foreach (MoveInputAcceptance acceptance in CurrentAction.inputAcceptance)
         {
-            if (acceptance.range.min <= pec && acceptance.range.max >= wasPec &&
+            if (acceptance.range.min <= frame && acceptance.range.max >= wasFrame &&
                 (MoveInputAcceptance <= 0 || acceptance.rate < MoveInputAcceptance))
                 MoveInputAcceptance = acceptance.rate;
         }
     }
 
     /// <summary>
-    /// 计算当前动画帧的信息
+    /// 计算当前动作帧的盒子信息
     /// </summary>
-    /// <param name="wasPec">上一帧的百分比</param>
-    /// <param name="pec">百分比进度</param>
-    private void CalculateBoxInfo(float wasPec, float pec)
+    /// <param name="wasFrame">上一帧的帧号</param>
+    /// <param name="frame">当前帧号</param>
+    private void CalculateBoxInfo(int wasFrame, int frame)
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.CalculateBoxInfo);
         ActiveAttackBoxInfo.Clear();
@@ -230,9 +241,9 @@ public class ActionController : MonoBehaviour
         foreach (AttackBoxTurnOnInfo aBox in CurrentAction.attackPhase)
         {
             bool open = false;
-            foreach (PercentageRange range in aBox.inPercentage)
+            foreach (FrameRange range in aBox.inFrames)
             {
-                if (pec >= range.min && wasPec <= range.max)
+                if (frame >= range.min && wasFrame <= range.max)
                 {
                     open = true;
                     break;
@@ -251,9 +262,9 @@ public class ActionController : MonoBehaviour
         foreach (BeHitBoxTurnOnInfo bHitBox in CurrentAction.defensePhase)
         {
             bool open = false;
-            foreach (PercentageRange range in bHitBox.inPercentage)
+            foreach (FrameRange range in bHitBox.inFrames)
             {
-                if (pec >= range.min && wasPec <= range.max)
+                if (frame >= range.min && wasFrame <= range.max)
                 {
                     open = true;
                     break;
@@ -273,19 +284,19 @@ public class ActionController : MonoBehaviour
     /// 在当前的情况下，是否能Cancel掉CurrentAction
     /// </summary>
     /// <param name="action">动画</param>
-    /// <param name="currentPercentage">当前动画播放到了百分之多少</param>
+    /// <param name="currentFrame">当前动作走到了第几帧</param>
     /// <param name="checkCommand">是否检查输入，true代表要输入也合法才行</param>
     /// <param name="beCancelledTag">符合条件的BeCancelledTag</param>
     /// <param name="foundTag">符合条件的CancelTag</param>
     /// <returns></returns>
-    private bool CanActionCancelCurrent(ActionInfo action, float currentPercentage, bool checkCommand, out BeCancelledTag beCancelledTag, out CancelTag foundTag)
+    private bool CanActionCancelCurrent(ActionInfo action, int currentFrame, bool checkCommand, out BeCancelledTag beCancelledTag, out CancelTag foundTag)
     {
         foundTag = new CancelTag();
         beCancelledTag = new BeCancelledTag();
         foreach (BeCancelledTag bcTag in CurrentBeCancelledTag)
         {
-            //百分比时间符合的情况下，才可能有效
-            if (!(bcTag.percentageRange.max >= _wasPercentage && bcTag.percentageRange.min <= currentPercentage)) continue;
+            //帧号符合的情况下，才可能有效
+            if (!(bcTag.cancelWindowFrames.max >= _wasFrame && bcTag.cancelWindowFrames.min <= currentFrame)) continue;
             
             //判断CancelTag是否有交集，没有交集，说明也不能cancel
             bool tagFit = false;
@@ -326,20 +337,23 @@ public class ActionController : MonoBehaviour
     /// 更换到某个action
     /// </summary>
     /// <param name="actionId">目标actionId</param>
-    /// <param name="transitionNormalized">融合百分比时间</param>
-    /// <param name="fromNormalized">从百分之多少开始播放新的动画</param>
+    /// <param name="transitionNormalized">融合长度（占目标动作时长的比例，CrossFade的实参量纲）</param>
+    /// <param name="startFrame">从目标动作的第几个逻辑帧开始播放</param>
     /// <param name="freezingAfterChange">切换动作后，硬直多少逻辑帧</param>
-    private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, int freezingAfterChange)
+    private void ChangeAction(string actionId, float transitionNormalized, int startFrame, int freezingAfterChange)
     {
         ActionInfo aInfo = GetActionById(actionId, out bool foundAction);
         if (foundAction)
         {
+            startFrame = Mathf.Clamp(startFrame, 0, aInfo.durationFrames);
             //清除掉非方向操作，连招手感得这么保障，当然刻意为了更容易连招，可以去掉这个
             command.CleanNonDirectionInputs();
             
             _onChangeAction?.Invoke(CurrentAction, aInfo);
-            anim.CrossFade(aInfo.animKey, transitionNormalized, 0, fromNormalized);
+            //表里存的是帧号，只有喂给Unity的这两个实参要换成归一化——这是边界换算，不是时间的表示
+            anim.CrossFade(aInfo.animKey, transitionNormalized, 0, startFrame / (float)aInfo.durationFrames);
             CurrentAction = aInfo;
+            _durationFrames = aInfo.durationFrames;
             //默认的cancelTag都可以加上
             CurrentBeCancelledTag.Clear();
             foreach (BeCancelledTag beCancelledTag in aInfo.beCancelledTag)
@@ -364,7 +378,7 @@ public class ActionController : MonoBehaviour
                 _rootMotionParam = aInfo.rootMotionParam;
             }
             
-            _wasPercentage = fromNormalized;
+            _wasFrame = CurrentFrame = startFrame;
             //顺便修一下面向
             transform.eulerAngles = new Vector3(0, command.inversed ? 270 : 90, 0);
             //修正完毕才接受新的是否要转向，因为可能这个动作本身自带转向
@@ -376,13 +390,15 @@ public class ActionController : MonoBehaviour
     /// <summary>
     /// 保持继续播放动作
     /// 为什么这也需要一个专门的函数？因为要处理循环问题
+    /// 【_wasFrame 要停在最后一帧，不能跟着回绕】：循环的那一tick要经历区间[末帧, 0]，
+    /// 像[0, x]这种从开头就开的窗口才会照今天的样子"关掉再开"一次，而不是凭空多开一帧
     /// </summary>
-    /// <param name="currentNormalized"></param>
-    private void KeepAction(float currentNormalized)
+    private void KeepAction()
     {
-        if (currentNormalized >= 1)
+        if (CurrentFrame >= _durationFrames)
         {
             anim.CrossFade(CurrentAction.animKey, 0, 0, 0);
+            CurrentFrame = 0;
         }
             
     }
@@ -421,12 +437,13 @@ public class ActionController : MonoBehaviour
 
     /// <summary>
     /// 初始化：设置所有的动作
+    /// 【只能换引用，不能Clear】：传进来的是 GameData.AllActions() 的那一份共享表，
+    /// 对着同一个控制器第二次调用时，Clear 就把全工程的表一起擦了
     /// </summary>
     /// <param name="actions"></param>
     /// <param name="defaultActionId"></param>
     public void SetAllActions(List<ActionInfo> actions, string defaultActionId)
     {
-        AllActions.Clear();
         if (actions != null) AllActions = actions;
         ChangeAction(defaultActionId, 0, 0, 0);
     }
@@ -458,9 +475,9 @@ public class ActionController : MonoBehaviour
                     _preorderActions.Add(new PreorderActionInfo
                     {
                         ActionId = picked.id,
-                        FromNormalized = acInfo.fromNormalized,
+                        FromFrame = acInfo.fromFrame,
                         Priority = acInfo.priority + picked.priority,
-                        TransitionNormalized = acInfo.transNormalized,
+                        TransitionNormalized = acInfo.transFrames / (float)picked.durationFrames,
                         FreezingAfterChangeAction = freezing
                     });
                 }
@@ -474,9 +491,9 @@ public class ActionController : MonoBehaviour
                     _preorderActions.Add(new PreorderActionInfo
                     {
                         ActionId = aInfo.id,
-                        FromNormalized = acInfo.fromNormalized,
+                        FromFrame = acInfo.fromFrame,
                         Priority = acInfo.priority + aInfo.priority,
-                        TransitionNormalized = acInfo.transNormalized,
+                        TransitionNormalized = acInfo.transFrames / (float)aInfo.durationFrames,
                         FreezingAfterChangeAction = freezing
                     });
                 }
@@ -495,7 +512,6 @@ public class ActionController : MonoBehaviour
         const int maxFreezingFrames = 30;   //卡帧、硬直上限，30个逻辑帧 = 0.5秒
         float addRate = Mathf.Clamp(maxFreezingFrames - _freezeFrames, 0, maxFreezingFrames) / (float)maxFreezingFrames;
         _freezeFrames += Mathf.RoundToInt(freezingFrames * addRate);
-        anim.speed = Freezing ? 0 : 1;
     }
 
     /// <summary>
@@ -504,7 +520,7 @@ public class ActionController : MonoBehaviour
     /// <param name="beCancelledTag"></param>
     public void AddTempBeCancelledTag(TempBeCancelledTag beCancelledTag)
     {
-        CurrentBeCancelledTag.Add(BeCancelledTag.FromTemp(beCancelledTag, _pec));
+        CurrentBeCancelledTag.Add(BeCancelledTag.FromTemp(beCancelledTag, CurrentFrame, _durationFrames));
     }
 
     /// <summary>

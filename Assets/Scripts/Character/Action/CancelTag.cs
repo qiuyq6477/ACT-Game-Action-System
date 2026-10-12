@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 /// <summary>
 /// CancelTag和BeCancelledTag是一对用于动作切换的核心数据
@@ -14,14 +14,14 @@ public struct CancelTag
     public string tag;
 
     /// <summary>
-    /// 这个动作会从normalized多少的地方开始播放
+    /// 这个动作会从第几个逻辑帧开始播放
     /// </summary>
-    public float startFromPercentage;
+    public int startFromFrame;
 
     /// <summary>
-    /// 动画融合进来的百分比时间长度
+    /// 动画融合进来的帧数，以本动作的时长为标尺
     /// </summary>
-    public float fadeInPercentage;
+    public int fadeInFrames;
     
     /// <summary>
     /// 当从这里Cancel动作时，优先级变化
@@ -33,9 +33,9 @@ public struct CancelTag
 public struct BeCancelledTag
 {
     /// <summary>
-    /// 时间段
+    /// 时间段（逻辑帧）
     /// </summary>
-    public PercentageRange percentageRange;
+    public FrameRange cancelWindowFrames;
 
     /// <summary>
     /// 可以Cancel的CancelTag
@@ -43,11 +43,9 @@ public struct BeCancelledTag
     public string[] cancelTag;
 
     /// <summary>
-    /// 动画融合出去的时间
-    /// Unity推荐用normalized作为一个标尺，因为用second对于做动画本身有点要求
-    /// 当然也可能是我对CrossFadeInFixedTime理解有误
+    /// 动画融合出去的帧数，以挂着这个tag的动作自己的时长为标尺
     /// </summary>
-    public float fadeOutPercentage;
+    public int fadeOutFrames;
     
     /// <summary>
     /// 当从这里被Cancel，动作会增加多少优先级
@@ -55,16 +53,17 @@ public struct BeCancelledTag
     public int priority;
 
     /// <summary>
-    /// 根据TempBeCancelledTag和产生这个Tag的百分比时间点，算出一个新的BeCancelledTag
+    /// 根据TempBeCancelledTag和产生这个Tag的那一帧，算出一个新的BeCancelledTag
     /// </summary>
-    /// <param name="tempTag"></param>
-    /// <param name="fromPercentage"></param>
+    /// <param name="tempTag">表里配好的临时tag</param>
+    /// <param name="fromFrame">从当前动作的第几帧开始往后开</param>
+    /// <param name="durationFrames">当前动作的总帧数，用来钳区间</param>
     /// <returns></returns>
-    public static BeCancelledTag FromTemp(TempBeCancelledTag tempTag, float fromPercentage) => new BeCancelledTag
+    public static BeCancelledTag FromTemp(TempBeCancelledTag tempTag, int fromFrame, int durationFrames) => new BeCancelledTag
     {
-        percentageRange = new PercentageRange(fromPercentage, fromPercentage + tempTag.percentage),
+        cancelWindowFrames = new FrameRange(fromFrame, fromFrame + tempTag.lengthFrames, durationFrames),
         cancelTag = tempTag.cancelTag,
-        fadeOutPercentage = tempTag.fadeOutPercentage,
+        fadeOutFrames = tempTag.fadeOutFrames,
         priority = tempTag.priority
     };
 }
@@ -78,10 +77,9 @@ public struct TempBeCancelledTag
     public string id;
     
     /// <summary>
-    /// 在当前动作中，有百分之多少的时间是开启的
-    /// 从开启的时间往后算
+    /// 在当前动作中，从开启的那一帧往后开多少个逻辑帧
     /// </summary>
-    public float percentage;
+    public int lengthFrames;
     
     /// <summary>
     /// 可以Cancel的CancelTag
@@ -89,11 +87,9 @@ public struct TempBeCancelledTag
     public string[] cancelTag;
 
     /// <summary>
-    /// 动画融合出去的时间
-    /// Unity推荐用normalized作为一个标尺，因为用second对于做动画本身有点要求
-    /// 当然也可能是我对CrossFadeInFixedTime理解有误
+    /// 动画融合出去的帧数，以当前动作的时长为标尺
     /// </summary>
-    public float fadeOutPercentage;
+    public int fadeOutFrames;
     
     /// <summary>
     /// 当从这里被Cancel，动作会增加多少优先级

@@ -17,10 +17,37 @@ public static class LogicClock
     public static long Frame { get; private set; }
 
     /// <summary>
+    /// 每个渲染帧最多补几个逻辑帧：卡顿时宁可丢逻辑时间也不追帧，免得越卡越追不上（死亡螺旋）
+    /// </summary>
+    public const int MaxTicksPerFrame = 4;
+
+    /// <summary>
     /// 推进一个逻辑帧，只准GameMain的时钟循环调用
     /// </summary>
     public static void Advance()
     {
         Frame++;
+    }
+
+    /// <summary>
+    /// 把渲染帧经过的秒数结算成"这一渲染帧该跑几个逻辑帧"，零头留在累加器里。
+    /// 渲染帧率到逻辑帧率的换算全工程只有这一处，所以它单独可测
+    /// （Assets/Editor/ActionFrameClockTests 用 30/60/120 三档和一次卡顿来验这里）
+    /// </summary>
+    /// <param name="accumulator">渲染帧与逻辑帧之间的差额（秒）</param>
+    /// <param name="deltaTime">本次渲染帧经过了多少秒</param>
+    /// <returns>该跑的逻辑帧数</returns>
+    public static int TicksDue(ref double accumulator, float deltaTime)
+    {
+        accumulator += deltaTime;
+        double max = MaxTicksPerFrame * Tick;
+        if (accumulator > max) accumulator = max;
+        int ticks = 0;
+        while (accumulator >= Tick)
+        {
+            accumulator -= Tick;
+            ticks++;
+        }
+        return ticks;
     }
 }

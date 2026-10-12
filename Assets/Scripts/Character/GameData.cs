@@ -29,8 +29,15 @@ public static class GameData
                 ActionInfo info = source;
                 if (!string.IsNullOrEmpty(info.id))
                 {
+                    //时长是整条帧号时钟的标尺，填漏了会一路除出无穷大，先在这里挡住并喊一声
+                    if (info.durationFrames <= 0)
+                    {
+                        Debug.LogError("动作 " + info.id + " 的 durationFrames 没填（或填了0）：" +
+                                       "跑菜单 Tools/ACT/打印动作时长 拿正确帧数填回 Action.json");
+                        info.durationFrames = 1;
+                    }
                     //把只有字符串的表数据烘焙成运行期直接可用的数值，这里分配一次，之后每帧都不再碰字符串
-                    info.rootMotionParam = RootMotionMethod.Bake(info.rootMotionTween.method, info.rootMotionTween.param);
+                    info.rootMotionParam = RootMotionMethod.Bake(info.rootMotionTween.method, info.rootMotionTween.param, info.durationFrames);
                     //盒子的tag烘焙成位掩码；阶段数组本身是引用类型，按下标改元素就改到了共享的那份表
                     if (info.attackPhase != null)
                         for (int i = 0; i < info.attackPhase.Length; i++)

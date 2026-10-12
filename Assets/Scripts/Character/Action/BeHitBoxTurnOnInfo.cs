@@ -8,9 +8,9 @@
 public struct BeHitBoxTurnOnInfo
 {
     /// <summary>
-    /// 开启的时间区域，可以分为多段时间开启
+    /// 开启的时间区域（逻辑帧），可以分为多段时间开启
     /// </summary>
-    public PercentageRange[] inPercentage;
+    public FrameRange[] inFrames;
     
     /// <summary>
     /// 要开启的盒子的tag

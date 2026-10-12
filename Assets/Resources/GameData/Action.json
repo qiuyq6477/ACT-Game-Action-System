@@ -2,14 +2,15 @@
     "data":[
         {
             "id":"BoxingStand",
+            "durationFrames":48,
             "animKey":"BoxingStand",
             "catalog":"Stand",
             "cancelTag":[],
             "beCancelledTag":[
                 {
-                    "percentageRange":{"min":0, "max":1},
+                    "cancelWindowFrames": {"min": 0, "max": 48},
                     "cancelTag":["InitAction"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 }
             ],
             "tempBeCancelledTag":[],
@@ -20,7 +21,7 @@
             "attackPhase": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 48}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -39,6 +40,7 @@
         },
         {
             "id":"BoxingMoveForward",
+            "durationFrames":48,
             "animKey":"BoxingForward",
             "catalog":"Stand",
             "keepPlayingAnim": true,
@@ -46,15 +48,15 @@
             "cancelTag":[
                 {
                     "tag":"InitAction",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":2
                 }
             ],
             "beCancelledTag":[
                 {
-                    "percentageRange":{"min":0, "max":1},
+                    "cancelWindowFrames": {"min": 0, "max": 48},
                     "cancelTag":["InitAction"],
-                    "fadeOutPercentage":0.05,
+                    "fadeOutFrames":2,
                     "priority": 1
                 }
             ],
@@ -66,7 +68,7 @@
                 }
             ],
             "inputAcceptance": [{
-                "range": {"min": 0, "max": 1},
+                "range": {"min": 0, "max": 48},
                 "rate": 1
             }],
             "autoNextActionId":"BoxingStand",
@@ -74,7 +76,7 @@
             "attackPhase": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 48}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -93,6 +95,7 @@
         },
         {
             "id":"BoxingMoveBackward",
+            "durationFrames":48,
             "animKey":"BoxingBackward",
             "catalog":"Stand",
             "keepPlayingAnim": true,
@@ -100,20 +103,20 @@
             "cancelTag":[
                 {
                     "tag":"InitAction",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":2
                 }
             ],
             "beCancelledTag":[
                 {
-                    "percentageRange":{"min":0, "max":1},
+                    "cancelWindowFrames": {"min": 0, "max": 48},
                     "cancelTag":["InitAction"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 },
                 {
-                    "percentageRange":{"min":0.8, "max":1},
+                    "cancelWindowFrames": {"min": 39, "max": 48},
                     "cancelTag":["TurnBack"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 }
             ],
             "tempBeCancelledTag":[],
@@ -124,7 +127,7 @@
                 }
             ],
             "inputAcceptance": [{
-                "range": {"min": 0, "max": 1},
+                "range": {"min": 0, "max": 48},
                 "rate": 0.7
             }],
             "autoNextActionId":"BoxingStand",
@@ -132,7 +135,7 @@
             "attackPhase": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 48}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -151,6 +154,7 @@
         },
         {
             "id":"HurtFromForward",
+            "durationFrames":18,
             "说明": [
                 "受伤从不同的角度有不同的动作，其实这些动作之间的Cancel等具体信息都是不同的",
                 "比如我们希望背后受击惩罚大一些，不可以做出一些反击动作等，那么背后的Cancel与正面的就不同了",
@@ -176,7 +180,7 @@
             "defensePhase":[
                 {
                     "说明": "受击动作总得有一段无敌帧的",
-                    "inPercentage":[{"min":0.65, "max":1}],
+                    "inFrames": [{"min": 12, "max": 18}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -195,6 +199,7 @@
         },
         {
             "id":"HurtFromBackward",
+            "durationFrames":18,
             "animKey":"HurtFromBack",
             "catalog":"Hurt",
             "priority": 10,
@@ -208,7 +213,7 @@
             "attacks": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0.65, "max":1}],
+                    "inFrames": [{"min": 12, "max": 18}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -227,6 +232,7 @@
         },
         {
             "id":"BeatenFromForward",
+            "durationFrames":36,
             "animKey":"BeatenFromFront",
             "catalog":"Beaten",
             "priority": 11,
@@ -240,7 +246,7 @@
             "attacks": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0.65, "max":1}],
+                    "inFrames": [{"min": 24, "max": 36}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -259,6 +265,7 @@
         },
         {
             "id":"BeatenFromBackward",
+            "durationFrames":18,
             "animKey":"BeatenFromBack",
             "catalog":"Beaten",
             "priority": 11,
@@ -272,7 +279,7 @@
             "attacks": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0.65, "max":1}],
+                    "inFrames": [{"min": 12, "max": 18}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -291,6 +298,7 @@
         },
         {
             "id":"TurnBack",
+            "durationFrames":48,
             "说明": "专门的转身动作，这个游戏中，我们让角色会倒退一段距离然后才转身",
             "animKey":"BoxingBackward",
             "catalog":"Stand",
@@ -300,15 +308,15 @@
             "cancelTag":[
                 {
                     "tag":"TurnBack",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":2
                 }
             ],
             "beCancelledTag":[
                 {
-                    "percentageRange":{"min":0, "max":1},
+                    "cancelWindowFrames": {"min": 0, "max": 48},
                     "cancelTag":["InitAction"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 }
             ],
             "tempBeCancelledTag":[],
@@ -324,7 +332,7 @@
             "attackPhase": [],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 48}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -343,22 +351,23 @@
         },
         {
             "id":"Punch1",
+            "durationFrames":12,
             "animKey":"Punch1",
             "catalog":"Punch",
             "cancelTag":[
                 {
                     "tag":"InitAction",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":1
                 }
             ],
             "beCancelledTag": [],
             "tempBeCancelledTag":[
                 {
                     "id":"PunchCombo1",
-                    "percentage":0.1,
+                    "lengthFrames":2,
                     "cancelTag":["Punch2"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":1
                 }
             ],
             "commands":[
@@ -371,7 +380,7 @@
             "autoNextActionId":"BoxingStand",
             "attackPhase": [
                 {
-                    "inPercentage": [{"min": 0.3, "max": 0.43}],
+                    "inFrames": [{"min": 4, "max": 5}],
                     "tag":["LeftPunch"],
                     "attackPhase": 0,
                     "priority": 0
@@ -406,7 +415,7 @@
             ],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 12}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -425,22 +434,23 @@
         },
         {
             "id":"Punch2",
+            "durationFrames":38,
             "animKey":"Punch2",
             "catalog":"Punch",
             "cancelTag":[
                 {
                     "tag":"Punch2",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":2
                 }
             ],
             "beCancelledTag": [],
             "tempBeCancelledTag":[
                 {
                     "id":"PunchCombo2",
-                    "percentage":0.1,
+                    "lengthFrames":4,
                     "cancelTag":["Punch1"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 }
             ],
             "commands":[
@@ -453,7 +463,7 @@
             "autoNextActionId":"BoxingStand",
             "attackPhase": [
                 {
-                    "inPercentage": [{"min": 0.4, "max": 0.5}],
+                    "inFrames": [{"min": 16, "max": 19}],
                     "tag":["RightPunch"],
                     "attackPhase": 0,
                     "priority": 0
@@ -494,7 +504,7 @@
             ],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 38}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -515,37 +525,38 @@
                 "说明": [
                     "直线前进函数，参见RootMotionMethod.Methods[\"GoStraight\"]",
                     "参数1：最终往前多少米（x）",
-                    "参数2：从动画百分之多少开始移动",
-                    "参数3：到动画百分比多少结束移动"
+                    "参数2：从第几个逻辑帧开始移动",
+                    "参数3：到第几个逻辑帧结束移动"
                 ],
-                "param": ["0.2","0.12","0.22"]
+                "param": ["0.2", "5", "8"]
             }
         },
         {
             "id":"Kick1",
+            "durationFrames":42,
             "animKey":"Kick1",
             "catalog":"Kick",
             "cancelTag":[
                 {
                     "tag":"InitAction",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05
+                    "startFromFrame":0,
+                    "fadeInFrames":2
                 }
             ],
             "beCancelledTag":[
                 {
-                    "percentageRange":{"min":0.58, "max":0.9},
+                    "cancelWindowFrames": {"min": 25, "max": 37},
                     "cancelTag":["TwinKickWhileKick1"],
-                    "fadeOutPercentage":0.05,
+                    "fadeOutFrames":2,
                     "priority":1
                 }
             ],
             "tempBeCancelledTag":[
                 {
                     "id":"KickCombo1",
-                    "percentage":0.1,
+                    "lengthFrames":5,
                     "cancelTag":["Kick1"],
-                    "fadeOutPercentage":0.05
+                    "fadeOutFrames":2
                 }
             ],
             "commands":[
@@ -558,7 +569,7 @@
             "autoNextActionId":"BoxingStand",
             "attackPhase": [
                 {
-                    "inPercentage": [{"min": 0.35, "max": 0.44}],
+                    "inFrames": [{"min": 15, "max": 18}],
                     "tag":["RightKick"],
                     "attackPhase": 0,
                     "priority": 0
@@ -593,7 +604,7 @@
             ],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 42}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -616,20 +627,21 @@
         },
         {
             "id":"TwinKick",
+            "durationFrames":30,
             "animKey":"TwinKick",
             "catalog":"Skill",
             "priority": 1,
             "cancelTag":[
                 {
                     "tag":"InitAction",
-                    "startFromPercentage":0,
-                    "fadeInPercentage":0.05,
+                    "startFromFrame":0,
+                    "fadeInFrames":2,
                     "priority":0
                 },
                 {
                     "tag":"TwinKickWhileKick1",
-                    "startFromPercentage":0.1,
-                    "fadeInPercentage":0.05,
+                    "startFromFrame":3,
+                    "fadeInFrames":2,
                     "priority":1
                 }
             ],
@@ -645,7 +657,7 @@
             "autoNextActionId":"BoxingStand",
             "attackPhase": [
                 {
-                    "inPercentage": [{"min": 0.28, "max": 0.34}],
+                    "inFrames": [{"min": 9, "max": 10}],
                     "tag":["LeftKick"],
                     "attackPhase": 0,
                     "priority": 0
@@ -669,7 +681,7 @@
                         "changeType":1,
                         "param":"TwinKickAutoCombo",
                         "priority":0,
-                        "fromNormalized" : 0.25
+                        "fromFrame":11
                     },
                     "targetActionChange": {
                         "changeType":2,
@@ -681,7 +693,7 @@
             ],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 30}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],
@@ -700,6 +712,7 @@
         },
         {
             "id":"TwinKickAutoCombo",
+            "durationFrames":42,
             "animKey":"TwinKick2",
             "priority": 2,
             "catalog":"Skill",
@@ -711,7 +724,7 @@
             "autoNextActionId":"BoxingStand",
             "attackPhase": [
                 {
-                    "inPercentage": [{"min": 0.36, "max": 0.5}],
+                    "inFrames": [{"min": 16, "max": 21}],
                     "tag":["LeftKick"],
                     "attackPhase": 0,
                     "priority": 0
@@ -746,7 +759,7 @@
             ],
             "defensePhase":[
                 {
-                    "inPercentage":[{"min":0, "max":1}],
+                    "inFrames": [{"min": 0, "max": 42}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],

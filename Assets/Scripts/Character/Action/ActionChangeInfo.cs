@@ -16,11 +16,11 @@ public struct ActionChangeInfo
     [Tooltip("优先级，因为有多个变化信息会要求角色变化动作，但是角色最后只能变到一个，所以得冒泡")]
     public int priority;
 
-    [Tooltip("从百分之多少开始这个动作"), Range(0.00f, 1.00f)]
-    public float fromNormalized;
+    [Tooltip("从目标动作的第几个逻辑帧开始播放")]
+    public int fromFrame;
 
-    [Tooltip("融合长度"), Range(0.00f, 1.00f)]
-    public float transNormalized;
+    [Tooltip("融合长度，单位是逻辑帧，以目标动作的时长为标尺")]
+    public int transFrames;
 }
 
 [Serializable]

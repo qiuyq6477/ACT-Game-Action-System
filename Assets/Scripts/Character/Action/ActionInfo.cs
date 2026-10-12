@@ -23,6 +23,14 @@ public struct ActionInfo
     public string id;
 
     /// <summary>
+    /// 这个动作一共多少个逻辑帧，是表里填的数据（不是从Animator反推的）。
+    /// 帧号时钟、所有窗口的上界、RootMotion的归一化、CrossFade的offset全以它为标尺，
+    /// 所以美术重导动画改了clip长度的那一刻，这个值必须一起改——
+    /// 校对由编辑期菜单 Tools/ACT/打印动作时长 负责（运行期拿不到状态机，见 Doc/plan/refactor.md）
+    /// </summary>
+    public int durationFrames;
+
+    /// <summary>
     /// 在Animator中的一个动作的名称，用来叫Animator播放某个动作的
     /// </summary>
     public string animKey;
@@ -164,15 +172,15 @@ public struct ActionInfoContainer
 }
 
 /// <summary>
-/// 阶段性输入百分比
+/// 阶段性移动输入接受度
 /// </summary>
 [Serializable]
 public struct MoveInputAcceptance
 {
     /// <summary>
-    /// 在百分比多少的阶段
+    /// 在第几帧到第几帧这个阶段
     /// </summary>
-    public PercentageRange range;
+    public FrameRange range;
     /// <summary>
     /// 允许百分比
     /// </summary>

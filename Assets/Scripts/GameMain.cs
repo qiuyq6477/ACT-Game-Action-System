@@ -28,12 +28,7 @@ public class GameMain : MonoBehaviour
     public int targetFrameRate = 0;
 
     /// <summary>
-    /// 每个渲染帧最多补几个逻辑帧：卡顿时宁可丢逻辑时间也不追帧，免得越卡越追不上
-    /// </summary>
-    private const int MaxTicksPerFrame = 4;
-
-    /// <summary>
-    /// 渲染帧与逻辑帧之间的差额，只有这里认识Time.deltaTime
+    /// 渲染帧与逻辑帧之间的差额，只有这里认识Time.deltaTime（换算本身在 LogicClock.TicksDue）
     /// </summary>
     private double _accumulator = 0;
 
@@ -71,11 +66,9 @@ public class GameMain : MonoBehaviour
         foreach (CharacterObj c in _all)
             c.input.SampleRenderFrame();
 
-        _accumulator += Time.deltaTime;
-        if (_accumulator > MaxTicksPerFrame * LogicClock.Tick) _accumulator = MaxTicksPerFrame * LogicClock.Tick;
-        while (_accumulator >= LogicClock.Tick)
+        int ticks = LogicClock.TicksDue(ref _accumulator, Time.deltaTime);
+        for (int i = 0; i < ticks; i++)
         {
-            _accumulator -= LogicClock.Tick;
             LogicClock.Advance();
             TickAll();
         }
