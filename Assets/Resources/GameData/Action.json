@@ -3062,6 +3062,764 @@
             "说明": [
                 "死了就不该再被打到，所以受击阶段整个留空（不是填一个越界区间）"
             ]
+        },
+        {
+            "id": "PlayerGrab",
+            "durationFrames": 12,
+            "animKey": "PlayerGrab",
+            "catalog": "Grab",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "priority": 0,
+                    "cancelCondition": {
+                        "method": "HoldingUnit",
+                        "param": [
+                            "Without"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 6,
+                        "max": 12
+                    },
+                    "cancelTag": [
+                        "GrabPunch",
+                        "GrabKick",
+                        "Throw"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        104
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": ""
+                    },
+                    "hitStunFrames": 0,
+                    "freezeFrames": 0,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "holdFrames": 180,
+                    "holdOffset": {
+                        "x": 0.93,
+                        "y": 0.6,
+                        "z": 0.0
+                    },
+                    "selfActionChange": {
+                        "changeType": 1,
+                        "param": "PlayerHold",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Grabbed",
+                        "priority": 5,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 6,
+                            "max": 9
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 6,
+                            "position": {
+                                "x": 0.5448,
+                                "y": 0.5985,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 0.7395,
+                                "y": 0.6964,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 12
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "抓取起手。源工程是 PlayerTryGrab：一个 12 帧的抬手判定，判定开着的时候问一句「这一下抓到谁」",
+                "抓到人的两条出口都写在这一记攻击上：selfActionChange 把自己交给 PlayerHold（举着人的那一行），targetActionChange 把人换成 Grabbed 分类。抓不到人就走这条自己的 autoNextActionId 回站立——所以 autoNextActionId 填 PlayerIdle 而不是 PlayerHold，成败分开才不会失败也举着空气",
+                "holdFrames 180 = 源工程 grabDuration 3 秒换算成逻辑帧；holdOffset x 0.93 = 源工程 grabPosition.x，y 0.6 是手的位置（源工程那个值是 0，人站在原地被举着看不出高度，HD-2D 下要有个高度才像被拎起来）",
+                "门禁 HoldingUnit Without：已经举着人的时候这招不能再出一遍。它和 PlayerThrow 共用抓取键（104），两条都在候选里时冒泡比的是优先级，而平手取的是 AllActions 的先后——那是查不出来的错",
+                "窗口第 6 拍起允许抓取追击与投掷：真抓到人是在第 6..10 拍之间，抓住了就能立刻接着打，不用等起手做完"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerHold",
+            "durationFrames": 180,
+            "animKey": "PlayerGrab",
+            "catalog": "Stand",
+            "cancelTag": [],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 180
+                    },
+                    "cancelTag": [
+                        "GrabPunch",
+                        "GrabKick",
+                        "Throw"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": true,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 180
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "举着人的那一行。animKey 复用 PlayerGrab——源工程也是同一条片子，12 帧的抬手动作放完就停在末帧上（clip 的 m_LoopTime 是 0，所以后面 168 拍都是那一张举起姿势，不用另做片子）",
+                "durationFrames 180 是「最多举 3 秒」这件事，不是片子长度。这是全表第一条这么填的行，它安全的前提是这一行既没有判定盒轨迹也没有 cue——那两样都以拍号为基准，跟 Animator 的进度无关",
+                "keepHold true：切到这一行算「仍然举着人」。抓取约束什么时候撒手就写在这里，不写在代码里",
+                "没有 commands，所以它不能被按键直接进——只能由 PlayerGrab 命中后的 selfActionChange 进来。它自己也不能被方向键派生走（窗口里只有抓取拳/抓取脚/投掷三个 tag），跟源工程一样举着人就不能走路",
+                "autoNextActionId 回 PlayerIdle：时间到了自己收尾，于是 holdFrames 与 durationFrames 是同一个 180，撒手与放下手的姿势发生在同一拍"
+            ],
+            "priority": 0
+        },
+        {
+            "id": "PlayerGrabPunch",
+            "durationFrames": 36,
+            "animKey": "PlayerGrabPunch",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "GrabPunch",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "priority": 0,
+                    "cancelCondition": {
+                        "method": "HoldingUnit",
+                        "param": [
+                            "With"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerHold",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": true,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": ""
+                    },
+                    "hitStunFrames": 0,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "holdFrames": 0,
+                    "holdOffset": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 10,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 0,
+                            "position": {
+                                "x": 0.57,
+                                "y": 0.48,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 0.7899,
+                                "y": 0.64,
+                                "z": 0.5
+                            }
+                        },
+                        {
+                            "startFromFrame": 10,
+                            "position": {
+                                "x": 0.329,
+                                "y": 0.414,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 0.7899,
+                                "y": 0.64,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 36
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 2,
+                    "kind": 4,
+                    "param": ""
+                }
+            ],
+            "说明": [
+                "举着人打。判定窗口与盒子轨迹照 clip 导出（源片子开着的是第 10..19 帧）",
+                "targetActionChange 填 Keep：手里的人不该因为被自己人打一下就换动作——他一动，约束那一条「被举者换了动作就算挣脱」就会立刻把他放下来，抓拳就变成了「打一下摔一下」。被打的反应（掉血、白闪）归 1.9 的数值层管，不该由换行动作来表达",
+                "pushPower 全 0：被举者的坐标由约束说了算，这里推他一下只会在撒手之后莫名其妙地多走一步",
+                "autoNextActionId 回 PlayerHold：打完接着举，跟源工程 PlayerGrabAttack 播完回抓取状态一致"
+            ],
+            "priority": 20
+        },
+        {
+            "id": "PlayerGrabKick",
+            "durationFrames": 36,
+            "animKey": "PlayerGrabKick",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "GrabKick",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "priority": 0,
+                    "cancelCondition": {
+                        "method": "HoldingUnit",
+                        "param": [
+                            "With"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerHold",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": true,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": ""
+                    },
+                    "hitStunFrames": 0,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "holdFrames": 0,
+                    "holdOffset": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 11,
+                            "max": 34
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 1,
+                            "position": {
+                                "x": 0.57,
+                                "y": 0.48,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 0.7899,
+                                "y": 1.0311,
+                                "z": 0.5
+                            }
+                        },
+                        {
+                            "startFromFrame": 3,
+                            "position": {
+                                "x": 0.285,
+                                "y": 0.697,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 0.7899,
+                                "y": 1.0311,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 36
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 9,
+                    "kind": 4,
+                    "param": ""
+                },
+                {
+                    "frame": 32,
+                    "kind": 1,
+                    "param": "SmokePuffLand"
+                }
+            ],
+            "说明": [
+                "举着人踢。源片子的盒子从第 11 帧一直开到片尾，所以窗口宽到 34 拍——它带一个落地烟尘的 cue（第 32 拍）",
+                "其余与 PlayerGrabPunch 同理：Keep、不推、打完回 PlayerHold"
+            ],
+            "priority": 20
+        },
+        {
+            "id": "PlayerThrow",
+            "durationFrames": 17,
+            "animKey": "PlayerThrow",
+            "catalog": "Stand",
+            "cancelTag": [
+                {
+                    "tag": "Throw",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "priority": 0,
+                    "cancelCondition": {
+                        "method": "HoldingUnit",
+                        "param": [
+                            "With"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        104
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": false,
+            "flip": true,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 2.5,
+                            "y": 1.2,
+                            "z": 0.0
+                        },
+                        "inFrames": 45,
+                        "tweenMethod": "Arc"
+                    },
+                    "hitStunFrames": 0,
+                    "freezeFrames": 0,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "holdFrames": 0,
+                    "holdOffset": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 1,
+                            "max": 3
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 1,
+                            "position": {
+                                "x": 0.93,
+                                "y": 1.2,
+                                "z": 0.0
+                            },
+                            "size": {
+                                "x": 1.4,
+                                "y": 1.4,
+                                "z": 1.0
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 17
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 1,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "说明": [
+                "投掷。flip true：源工程 PlayerThrowEnemy 一进去就把玩家转到反方向，人是从背后摔出去的",
+                "源工程这条片子没有判定盒曲线，所以这里造一记「专门打手里那个人」的合成盒：摆在 (0.93, 1.2) 正好是 holdOffset 那个人的受击盒中心（被举者脚底在他自己上方 0.6 米处，受击盒中心再往上 0.6 米），尺寸 1.4 立方把它整个罩住。这两处的 x/y 是同一个数，改一处必须改另一处",
+                "为什么走一记攻击而不是直接代码解约束：解约束之后要发生的事情——被举者换动作、按抛物线飞出去、进命中记录不许连打——全都是 DoAttack 已经在做的事，写成一记攻击就全部白拿，写成代码则要重新发明一遍",
+                "pushPower 走 tweenMethod Arc（横向 2.5 米、最高点 1.2 米、45 拍），数值来自源工程 throwDistance 5 / throwHeight 3 个精灵单位，按 PPU 与角色身高折成米",
+                "targetActionChange byCatalog Beaten：被举者一换动作，约束那一拍就发现他不再是 Grabbed 了，于是撒手。撒手与抛物线的起点在同一拍，飞出去的第一拍是下一拍（那一拍他的动作已经换完了）"
+            ],
+            "priority": 30
+        },
+        {
+            "id": "Grabbed",
+            "durationFrames": 180,
+            "animKey": "BoxingStand",
+            "catalog": "Grabbed",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "BoxingStand",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "keepHold": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 180
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0,
+                        "fromFrame": 0,
+                        "transFrames": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "被举着的人（demo 那两只灰盒敌兵会走这一行）。byCatalog 找的就是 catalog = Grabbed 这一条",
+                "beCancelledTag 留空 = 钉死：他自己的按键一律挤不掉这一行，所以被举着的时候不能乱动，而攻击方的 targetActionChange 走的是预约列表、不经过这个口子，投掷照样能把他换走",
+                "animKey 用 BoxingStand：这两只敌兵是 3D 灰盒，而源工程的 EnemyGrabbed 是一张精灵的 1 帧片子，它属于 BeatEmUp 那套素材（Step 2 敌兵换成精灵之后走的才是那条）。durationFrames 180 与 holdFrames 同一件事的两头：举人者和被举者约好一起结束，谁先到都把另一头带走（前者靠 keepHold，后者靠被举者换动作）"
+            ],
+            "priority": 10
         }
     ]
 }

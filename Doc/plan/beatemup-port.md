@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 已完成 1.1–1.7，剩 1.8/1.9 与 Step 2） · 2026-10
+> 状态：实施中（Step 1 已完成 1.1–1.8，剩 1.9 与 Step 2） · 2026-10
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -111,7 +111,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.5 ✅ | 盒子轨迹（A）+ 帧事件表（B）+ cue 派发口（池化的接收者留给 1.7） | 六条新用例：cue 在该响的那一拍响且只响一次、顿挫只推迟不吞不重、循环每圈重放一次；轨迹每拍摆到表里的位置与尺寸（沿上一条、关掉就不写）、没填 track 一个数都不碰、两条表项抢同一个盒子时优先级高的说了算。`CueFire`/`BoxPose` 两个新分区稳态 0 B；编辑期用例 26/26 全绿 |
 | 1.6 ✅ | 派生门禁（C）+ 长按 Block（E）+ 种子化随机 `Dice` + 场上角色注册表 | 六条新用例：站着能接的地面招在半空接不出来；追击条件既查距离（x/z 两根轴）也查对方此刻的动作；Block 每拍登记所以按住期间每拍重新授予、松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；随机数只由种子与抽样次数决定（换帧率分法/换种子/退化点/取值范围）；函数名写错按不成立处理。32/32 全绿，稳态十一个分区 0 B |
 | 1.7 ✅ | 玩家整套招式表（21 行，帧数据全部来自 1.4 的工具）+ 跳跃/落地（`jumpUpSpeed`/`landActionId`）+ HD-2D 呈现（精灵玩家 prefab、由表生成的平铺控制器、相机标定、只跟横向） | 36/36 全绿；30 与 120 两档下滞空拍数与最高点逐字一致；`PlayerPunch1` 端到端打到人（盒子当拍摆到表里的位置与尺寸）；稳态十一个分区 0 B。偏离与顺延见第八节 |
-| 1.8 | 抓取约束 + 投掷（D） | 被举者**逐 tick 跟随**（不复现一次性传送）；"扔敌人砸敌人"在解约束后仍能命中第三方 |
+| 1.8 ✅ | 抓取约束 + 投掷（D）：`holdFrames/holdOffset`、`keepHold`、`ApplyHolds` 一拍、`Arc` 抛物线、门禁 `HoldingUnit`、E 键 | 七条新用例：被举者**逐拍**跟随（摆一次的实现第一拍就红）、x 随正反手镜像而 z 不动、抓取系内部换动作不解约束而挨一记就解、`holdFrames` 走完撒手、投掷解约束后按 Arc 飞出去并落回地面、`Arc` 两头同高、投掷那记合成盒罩得住手里的人（数据耦合的闸门）。43/43 全绿；Play Mode 端到端按 E 举起（被举者落在玩家 + `holdOffset` 处）→ 再按 E 转身摔出 2.50 米、滞空读到 1.15 米、最后贴回地面；稳态十二个分区 0 B。偏离与顺延见第八节 |
 | 1.9 | 伤害/HP/霸体/格挡结算（= refactor.md Phase 3）+ 命中路径的分配 | 用例：霸体未破→掉血但不切 Hurt；`hp<=0`→Death；格挡免伤但有 blockstun 与推开；`Doc/issue/hit-event-heap-alloc.md` 结掉 |
 
 ### Step 2：世界与流程
@@ -257,6 +257,25 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 
 **顺延**：cue 的**池化接收者**（音效/特效/震镜头）本片仍没接——`CueDispatch.Handler` 是空的，帧事件只到"按拍派发"这一层，响不出声。它需要连音频资产一起导入，且和 `EntityManager`/对象池是同一件事，挪进 Step 2。敌兵也还是 3D 灰盒（源工程的敌兵贴图缺 `.meta`）。
 
+
+### 切片 1.8 抓取约束 + 投掷 · 已实施 · 2026-10
+
+源工程把"举起敌人"做成状态机里的一次坐标写入（`PlayerGrabEnemy.Enter` 里 `enemy.transform.position = ...`）加一个 `grabDuration = 3` 秒的墙钟计时器。这一片把它换成一等公民：**约束每拍重算，撒手的时机写在动作上**。框架为此新增 `AttackInfo.holdFrames/holdOffset`、`ActionInfo.keepHold`、`CharacterObj` 的一整套（`TryGrab`/`SetHoldConstraint`/`ReleaseHold`/`Holding`/`HeldBy`/静态 `ApplyHolds`）、TickAll 的第八拍、`ForceMoveMethod` 的 `Arc`、门禁 `HoldingUnit`、`KeyMap.Grab = 104`（E 键）。
+
+- **`holdFrames` 一格两用**（>0 就是"这记攻击要抓人"，同时也是撒手拍数），跟 `jumpUpSpeed <= 0 不抬人`、`inFrames 0 不推` 是同一种"零即关"的填法；再开一个 bool 只会多一种自相矛盾的配法。`180` 由源工程 `grabDuration 3 秒` 换算，墙钟量换逻辑帧之后错频一样长。
+- **每拍重算而不是摆一次**：源工程那一摆的后果是"玩家一动，敌人就留在原地飘着"。用例 `HeldUnitFollowsTheHolderEveryTickNotJustOnce` 连走六拍、每拍先把举人者挪一下，摆一次的实现第一拍就红。
+- **被举者要在三处让位**：`Move()` 整拍跳过（地面探测会把他 snap 回地面，把 `holdOffset.y` 那 0.6 米抹平）、`SeparateLanes` 跳过他（推挤先把他推开、约束下一拍又拉回来，表现是手里的人在抖）、约束那一拍排在 TickAll **最后**（要按举人者这一帧的最终坐标算，而不是上一帧的）。
+- **撒手只有三条规则，全都在表上**：被举者换了动作（被摔出去、被打死、挣脱，在这套框架里都长成"动作 id 变了"这一件事）、举人者换到的那一行没写 `keepHold`（受击、投掷出手）、`holdFrames` 走完（兜底）。其中第一条之所以不会把刚建立的约束立刻自我解除，是因为约束建立那一拍**只摆位不记 id**（被举者的换动作还排在预约列表里，下一拍才生效）；也之所以投掷能把他换走，是因为 `Grabbed` 那行的 `beCancelledTag` 留空只钉得住他自己的按键，攻击方的 `targetActionChange` 走的是预约列表。
+- **投掷就是"一记打在手里那个人身上的攻击"**：`PlayerThrow` 那条 clip 没有判定盒曲线，所以造了一只合成盒，摆位取 `holdOffset`、尺寸 1.4 立方正好罩住被举者（他的受击盒中心 = `holdOffset.y` + 受击盒自己的 `center.y`）。于是换 Beaten、按抛物线飞、进命中记录、`flip` 之后打到哪一侧，全部由现成的 `DoAttack` 承担，一行"放下人"的代码都不用写。代价是"手在哪"和"盒子打到哪"是同一个数的两处写法，于是这条耦合被 `ThrowHitBoxIsPlacedOnTheHeldUnit` 钉住（中心高度从 prefab 的 `CapsuleCollider.center.y` 读出来，不在用例里假设 0.6）。
+- **抓取拳/抓取脚的 `targetActionChange` 填 Keep**：手里的人不该因为被自己人打一下就换动作，而他一换动作就等于撒手——填 `Hurt` 的话"抓取连打"会变成"打一下摔一下"。挨打的反应（掉血、白闪）归 1.9 的数值层管。
+- **一个键两种含义靠门禁分流**：空手按 E 出抓取起手（`HoldingUnit Without`）、举着人按同一个键出投掷（`With`）。这两条都是候选时靠 `priority` 硬压也能出结果，但同分取的是表里靠前的那一行，等于把"这一下摔出去还是再抓一次"交给填表顺序决定。
+- **`durationFrames` 的第一条例外**：`PlayerHold` 与 `Grabbed` 填 180（= 状态最多待多久），而 `PlayerGrab` 那条片子只有 12 帧、`m_LoopTime` 是 0，所以第 12 拍之后 Animator 停在末帧上，正是"举着不动"该有的样子。为什么不学 `PlayerRun` 用 `autoNext` 自循环：那样抓取判定盒每 12 拍会重开一次，手里已经有人时它会去抢第二个人。
+- **被举者那一行走 `animKey: BoxingStand`**：源工程的 `EnemyGrabbed` 是 1 帧精灵片，属于还没换美术的敌兵（Step 2 敌兵换成精灵之后走的才是那条），而 demo 那两只 3D 角色的控制器里没有这个状态。
+- **撞出来的两条**（都进了 `Assets/Scripts/AGENTS.md`）：① **表里新增 `animKey` 必须重跑生成菜单**——状态不存在时 `CrossFade` 不报错，只在 Animator 里留一条 `GotoState: State could not be found`，表现是"招式出了、姿势停在上一张片子上"；② **`SpriteScaleX` 的负缩放会让孩子身上的 `BoxCollider` 拿到负的 lossyScale**，PhysX 每帧喊一条 `does not support negative scale or size` 并在热路径上分配。1.7 没暴露它是因为玩家几乎一直朝右，而 `PlayerThrow` 的 `flip` 让他第一次长期处于反手。修法已经写出来（`FacingApply` 翻完根节点之后把碰撞体那一层的 x 符号抵消掉：矩形与胶囊都是对称的，符号不改形状；盒子在身前身后由父节点乘 `localPosition` 决定），**但本期没能过闸门**——Unity Editor 当时卡在 Play 模式里，`run_tests` 排在播放模式后面不返回、Pipeline 命令队列连带 `editor_stop` 全都进不去，所以改动没有提交，登记成 `Doc/issue/facing-neg-scale-boxcollider.md`。
+
+**验证**：编辑期用例 **43/43 全绿**（第 16 区七条：逐拍跟随、镜像 x 不镜像 z、抓取系不解而受击即解、`holdFrames` 走完撒手、投掷解约束之后按 Arc 飞出去并落回地面、`Arc` 曲线两头同高而最高点是表里那个 y、合成盒罩得住被举者）。Play Mode 端到端（`AddInput(KeyMap.Grab)` 进逻辑层）：按 E 出 `PlayerGrab` → 第 6 拍打到敌兵 → 敌兵切 `Grabbed` 并被摆到 `(6.93, 0.60, 0)`，正是玩家 `(6.00, 0, 0)` + `holdOffset`；再按 E 出 `PlayerThrow` 并转到反手，敌兵被摔到 `-x` 方向，横向总位移 **2.50 米**（表里 2.5）、中途读到过 `y=1.15` 的滞空位置、最后贴回地面 `y=0`；`HeldBy` 在投掷之后恒为 null。稳态十二个分区（新增 `HoldApply`）`avg=0 max=0`；出招的那几拍读到过非零（`BoxPose avg=2 max=300`），来源就是上面第 ② 条 PhysX 警告，不是约束本身。
+
+**偏离与顺延**：源工程的 `hitOtherEnemiesWhenThrown`（飞出去的身体当武器砸别人）没做——那要在被摔的那一行动作上挂攻击盒，跟 1.9 的伤害结算与 Step 2 的敌兵招式一起做。另一处行为差异：被举着的人如果第三方打中他，他会立刻撒手落地（约束第一条规则的自然结果），源工程则是举着的人挨打也不掉。
 
 ### 顺带：恢复闸门
 

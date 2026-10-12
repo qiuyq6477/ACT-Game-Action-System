@@ -109,13 +109,15 @@ public class GameMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤。
+    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤→抓取约束。
     /// 以前这五家各写各的Update，谁先谁后由Unity决定，同一份代码换台机器就会差一帧。
     /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）。
     /// 相交采样夹在判定盒与命中结算之间：盒子刚被刷新过（开关和轨迹摆位都在那一拍），查到的就是"这一拍开着的那些盒"，
     /// 而它读的位置是上一拍Move()写下的，这个滞后和以前物理回调的滞后一致
-    /// 同轨推挤放在最后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
+    /// 同轨推挤放在移动之后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
     /// 地面探测算出的 groundY 与 z 无关，所以推完不用再探地
+    /// 抓取约束排在最后：被举者的坐标要按举人者**这一帧**的最终位置算，推挤已经把他排除在外了，
+    /// 再往前放就会被推挤或移动拍改写一次，手里的人每拍抖一下
     /// </summary>
     private void TickAll()
     {
@@ -140,6 +142,9 @@ public class GameMain : MonoBehaviour
         }
 
         CharacterObj.SeparateLanes(_all);
+
+        //最后一拍：被举者跟着举人者摆到手边，同时判断约束该不该解除
+        CharacterObj.ApplyHolds(_all);
     }
 
     /// <summary>
@@ -263,6 +268,9 @@ public class GameMain : MonoBehaviour
             tweenMethod = attackInfo.pushPower.tweenMethod
         });
         
+        //抓取：表里这一记写了 holdFrames 就顺手把人举起来，约束本身在 TickAll 最后一拍统一生效
+        attacker.TryGrab(defender, attackInfo);
+
         //CancelTag开启
         foreach (string cTag in attackInfo.tempBeCancelledTagTurnOn)
         {

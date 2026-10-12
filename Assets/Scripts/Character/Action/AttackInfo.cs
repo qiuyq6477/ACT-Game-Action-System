@@ -1,4 +1,5 @@
 ﻿using System;
+using UnityEngine;
 
 /// <summary>
 /// 造成的伤害信息
@@ -50,6 +51,22 @@ public struct AttackInfo
     /// </summary>
     public int hitSameTargetDelayFrames;
     
+    /// <summary>
+    /// 命中之后把打中的这个人举起来，最多举多少个逻辑帧。0（默认）= 这一记不抓人。
+    /// 【为什么一格就够、不用再开个"是否抓取"的开关】：holdFrames 只有 >0 才有意义，
+    /// 两个字段能表达的组合其实只有一个，多一个开关就多一种自相矛盾的填法
+    /// 【为什么是 180 而不是"永久"】：源工程用 grabDuration = 3 秒定时撒手
+    /// （Time.time 差值），换成逻辑帧就是 180 拍，错频时一样长
+    /// </summary>
+    public int holdFrames;
+
+    /// <summary>
+    /// 被举者相对举人者脚底的偏移（米）：x 是身前（按朝向镜像）、y 是高度、z 是车道（不镜像）。
+    /// 【和攻击盒的 track 位置是同一个数】：投掷那一记的盒子要正好罩住手里的人才能打得到他，
+    /// 盒子的摆位就是这里的 x/y（再算上被举者自己受击盒的中心高度），两处不一致投掷就会静默打空
+    /// </summary>
+    public Vector3 holdOffset;
+
     /// <summary>
     /// 当命中的时候，自身会发生的变化
     /// 这里值得注意的是，这未必是动作的属性，我在这里只是做的“粗糙”了

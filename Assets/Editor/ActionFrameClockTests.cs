@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十件事：
+/// 钉的十一件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -39,6 +39,10 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    一次起跳只落地一次、落地那一拍切到 landActionId；真表里站着按拳和边跑边按拳都出得来
 ///    （平局必须由 priority 裁决，不能由填表顺序）；空中再按跳跃不出二段跳、按拳出空中技。
 ///    【这一区的表行是真表】：1.7 之后「按拳出不出来」已经是表数据决定的事，拿现造的表项测等于没测。
+/// 11. 抓取约束与投掷（BeatEmUp 移植切片 1.8）：被举者**每一拍**都跟着举人者摆（源工程是摆一次，
+///    玩家一动敌人就飘在原地）；偏移的 x 随正反手镜像而 z 不镜像；抓取系内部换动作不解约束、
+///    挨一记就解；holdFrames 走完就撒手；投掷那一记的合成盒真的打得到手里的人，解约束之后按 Arc
+///    抛物线飞出去并落回地面；Arc 这条曲线本身两头同高、最高点就是表里那个 y。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -46,7 +50,8 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 第12区把判定盒拍也跑起来，因为它断言的是盒子被摆到哪；
 /// 第13区大多只跑到动作拍，只有制造滞空那一处要额外走一拍移动拍（地面探测在那一拍里写 State）；
 /// 第15区整条抛物线都要跑，所以它既跑移动拍，也自己摆一块 Ground 层的面板当地面——
-/// EditMode 没有场景，不造地面角色就一路往下掉。
+/// EditMode 没有场景，不造地面角色就一路往下掉；
+/// 第16区跑满整条链（移动、同轨推挤、抓取约束三拍都在内），因为"被举者这一拍站在哪"就是最后那一拍写的。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -1653,5 +1658,306 @@ public class ActionFrameClockTests
         Tick(KeyMap.Punch);
         Assert.AreEqual("PlayerJumpAttackPunch", _action.CurrentAction.id,
             "空中攻击才是 AirAttackTag 的消费者：跳跃的 beCancelledTag 只开这一个口子");
+    }
+
+    //==================================== 16. 抓取约束与投掷（切片 1.8） ====================================
+    //
+    // 这一区走的全是真表：PlayerGrab / PlayerHold / PlayerGrabPunch / PlayerThrow / Grabbed
+    // 都是 1.8 写进 Action.json 的行。【结算那一步为什么在测试里复刻】：DoAttack 是 GameMain 私有的，
+    // 而本区要钉的是"约束本身在每一拍干了什么"，所以照它的顺序把相关的几条搬过来一份；
+    // "按下 E 真的举起、真的把人摔出去"整条链在 Play Mode 里端到端验，两边各管一段。
+
+    /// <summary>表里 PlayerGrab 那一记的 holdOffset，x/y 分开写是为了让断言读得懂是哪一头错了</summary>
+    private const float HoldX = 0.93f;
+
+    private const float HoldY = 0.6f;
+
+    /// <summary>
+    /// 完整战斗链的一拍：输入→动作→判定盒→相交采样→移动→同轨推挤→抓取约束。
+    /// 【为什么后三拍一拍都不能少】：本区断言的坐标正是最后那一拍写的，而推挤那一拍会不会把被举者推歪，
+    /// 也只有跑到他之后才看得出来
+    /// </summary>
+    private void TickFight(params KeyMap[] pressed)
+    {
+        LogicClock.Advance();
+        _input.Tick();
+        _target.input.Tick();
+        for (int i = 0; i < pressed.Length; i++) _input.AddInput(pressed[i]);
+        _action.Tick();
+        _target.action.Tick();
+        RefreshBoxes(_character);
+        RefreshBoxes(_target);
+        CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+        _character.Tick();
+        _target.Tick();
+        CharacterObj.SeparateLanes(_pair);
+        CharacterObj.ApplyHolds(_pair);
+    }
+
+    /// <summary>
+    /// 只给这个角色会的那几行，起点是 startId
+    /// </summary>
+    private void StartRows(string startId, params string[] ids)
+    {
+        _action.SetAllActions(GameData.ActionsFor(ids), startId);
+    }
+
+    /// <summary>
+    /// 照 GameMain.DoAttack 里与本区有关的几行结算一次：双方换动作、硬直、卡帧、击退、抓取、命中记录。
+    /// 方向按攻击方的正反手镜像（就是那边的 GetForceDirection）
+    /// </summary>
+    private static void ApplyHit(CharacterObj attacker, CharacterObj defender, AttackInfo attack)
+    {
+        ForceDirection dir = attacker.Inversed ? ForceDirection.Backward : ForceDirection.Forward;
+        attacker.action.PreorderActionByActionChangeInfo(attack.selfActionChange, dir);
+        defender.action.PreorderActionByActionChangeInfo(attack.targetActionChange, dir, attack.hitStunFrames);
+        defender.action.ApplyHitStop(attack.hitStunFrames);
+        attacker.action.SetFreezing(attack.freezeFrames);
+        Vector3 dis = attack.pushPower.moveDistance;
+        if (dir != ForceDirection.Forward) dis.x = -dis.x;
+        defender.SetForceMove(new MoveInfo
+        {
+            inFrames = attack.pushPower.inFrames,
+            moveDistance = dis,
+            tweenMethod = attack.pushPower.tweenMethod,
+        });
+        attacker.TryGrab(defender, attack);
+        attacker.AddHitRecord(defender, attack.phase);
+    }
+
+    /// <summary>
+    /// 从"站着按 E"走到"人已经举在手里"：起手、走到窗口开着的那一拍、结算一次。
+    /// 【走到第 6 拍而不是随便跑几拍】：表里 PlayerGrab 的盒子第 6 拍才开，早一拍结算就等于在测一记没命中的攻击
+    /// </summary>
+    private void GrabTheTarget()
+    {
+        BuildGround(_rig.transform.position.y);
+        StartRows("PlayerIdle", "PlayerIdle", "PlayerRun", "PlayerGrab", "PlayerHold",
+            "PlayerGrabPunch", "PlayerThrow", "PlayerHit");
+        TickFight(KeyMap.Grab);
+        Assert.AreEqual("PlayerGrab", _action.CurrentAction.id, "抓取键（104）在真表里就是起手这一行");
+
+        FrameRange open = Info("PlayerGrab").attackPhase[0].inFrames[0];
+        for (int guard = 0; guard < 12 && _action.CurrentFrame < open.min; guard++) TickFight();
+        Assert.AreEqual(open.min, _action.CurrentFrame, "前提：要走到窗口开的那一拍，跑过了就得重来");
+        ApplyHit(_character, _target, Info("PlayerGrab").attacks[0]);
+
+        TickFight();
+        Assert.AreEqual("PlayerHold", _action.CurrentAction.id,
+            "抓到人的那一拍由 selfActionChange 把自己交给 PlayerHold——autoNextActionId 那条只在不中时走");
+        Assert.AreEqual("Grabbed", _target.action.CurrentAction.id, "被举者走 byCatalog Grabbed 挑出来的那一行");
+        Assert.AreEqual(_target, _character.Holding, "举人者这一头要记着手里是谁");
+        Assert.AreEqual(_character, _target.HeldBy, "被举者这一头也要记着，否则他的移动拍不会让位");
+    }
+
+    /// <summary>
+    /// 被举者每一拍都跟着举人者走。
+    /// 【这一条正是源工程那个缺陷的反面】：BeatEmUp 在进举起状态那一刻把敌人 transform.position 摆一次，
+    /// 玩家一动敌人就留在原地飘着。摆一次与每拍算一次，在这条用例里差得清清楚楚
+    /// </summary>
+    [Test]
+    public void HeldUnitFollowsTheHolderEveryTickNotJustOnce()
+    {
+        BuildTarget();
+        GrabTheTarget();
+
+        for (int i = 1; i <= 6; i++)
+        {
+            _rig.transform.position += new Vector3(0.05f, 0f, 0.02f);
+            TickFight();
+            Assert.AreEqual(_rig.transform.position.x + HoldX, _target.transform.position.x, 1e-4f,
+                "第" + i + "拍没跟上：举人者已经往前走了，被举者还留在上一拍的位置");
+            Assert.AreEqual(_rig.transform.position.y + HoldY, _target.transform.position.y, 1e-4f,
+                "第" + i + "拍高度不对：y 由 holdOffset 给，地面探测不许来抢（被举者的 Move() 整拍跳过）");
+            Assert.AreEqual(_rig.transform.position.z, _target.transform.position.z, 1e-4f,
+                "第" + i + "拍车道错了：同轨推挤那一拍必须把被举者排除在外，否则他每拍被推一下再被拉回来");
+        }
+    }
+
+    /// <summary>
+    /// 偏移的 x 随正反手镜像，z 不镜像。
+    /// 【z 为什么不镜像】：z 是屏幕纵向的车道，跟脸朝哪边无关（NatureMove 里纵深那一项同理）。
+    /// 写反了的后果是"朝左举人时手里的人跑到身后"，而这种错在正手时完全看不出来
+    /// </summary>
+    [Test]
+    public void HoldOffsetMirrorsForwardAxisButNotTheLane()
+    {
+        BuildTarget();
+        GrabTheTarget();
+
+        _character.Inversed = true;
+        _rig.transform.position = new Vector3(_rig.transform.position.x, _rig.transform.position.y, 1.2f);
+        TickFight();
+        Assert.AreEqual(_rig.transform.position.x - HoldX, _target.transform.position.x, 1e-4f,
+            "反手时偏移的 x 要取负：手里的人始终在身前，不是身后");
+        Assert.AreEqual(1.2f, _rig.transform.position.z, 1e-4f, "前提：宿主这一拍确实挪到 z=1.2 这个车道上");
+        Assert.AreEqual(0f, _target.transform.position.z - _rig.transform.position.z, 1e-4f,
+            "车道偏移是表里的 0，而且 z 不许被镜像——反手时把 0 变成 -0 没有差别，" +
+            "但把车道的绝对位置当成偏移来镜像，手里的人就会跑到另一个车道上去");
+
+        _character.Inversed = false;
+        TickFight();
+        Assert.AreEqual(_rig.transform.position.x + HoldX, _target.transform.position.x, 1e-4f,
+            "转回正手又要回到身前——镜像读的是当前朝向，不是建立约束那一刻的朝向");
+    }
+
+    /// <summary>
+    /// 抓取系内部换动作不解约束，而一出这个系（挨了一记）就解。
+    /// 【keepHold 就是这条规则的表写法】：解不解不由代码里的 if 决定，由"新动作承不承认手里有人"决定
+    /// </summary>
+    [Test]
+    public void GrabFamilyKeepsTheHoldButAHitDropsIt()
+    {
+        BuildTarget();
+        GrabTheTarget();
+
+        TickFight(KeyMap.Punch);
+        Assert.AreEqual("PlayerGrabPunch", _action.CurrentAction.id,
+            "举着人按拳出抓取拳：同一个键在门禁 HoldingUnit With 成立时才压得过普攻");
+        Assert.AreEqual(_target, _character.Holding, "抓取拳结束回到 PlayerHold，手里的人不该掉");
+
+        Vector3 held = _target.transform.position;
+        TickFight();
+        Assert.AreEqual(_rig.transform.position.x + HoldX, _target.transform.position.x, 1e-4f,
+            "打人的那几拍约束照旧每拍重算（" + held + " → 现在）");
+
+        _character.action.PreorderActionByActionChangeInfo(
+            new ActionChangeInfo {changeType = ActionChangeType.ChangeToActionId, param = "PlayerHit", priority = 5},
+            ForceDirection.Forward, 7);
+        TickFight();
+        Assert.AreEqual("PlayerHit", _action.CurrentAction.id, "前提：举人者挨了一记，动作被换到受击");
+        Assert.IsNull(_character.Holding,
+            "受击那一条没写 keepHold，所以约束在这一拍解除——不然会出现「人躺在地上、手里还举着敌人」这种状态");
+        Assert.IsNull(_target.HeldBy, "两端要一起解，只解自己这头等于被举者还以为自己悬在半空");
+    }
+
+    /// <summary>
+    /// 投掷：解约束、按抛物线飞出去、最后落回地面。
+    /// 【这条同时钉住四个数】：flip 之后打的方向、Arc 的最高点、横向总位移、以及落地。
+    /// 【结算仍然由 ApplyHit 手动给，没等几何相交】：宿主 prefab 的攻击盒挂在骨骼上，
+    /// 而表里的轨迹是给"盒子是根节点的儿子"那套精灵 rig 用的（切片 1.7 的 BeatEmUpPlayer.prefab），
+    /// 两者的局部坐标基准不同。"盒子的摆位罩得住手里的人"这件事由
+    /// ThrowHitBoxIsPlacedOnTheHeldUnit 按数据验，"按 E 真的把人摔出去"在 Play Mode 用精灵 rig 端到端验
+    /// </summary>
+    [Test]
+    public void ThrowReleasesIntoAnArcAndLandsBackOnTheGround()
+    {
+        BuildTarget();
+        GrabTheTarget();
+        float groundY = _rig.transform.position.y;
+
+        TickFight(KeyMap.Grab);
+        Assert.AreEqual("PlayerThrow", _action.CurrentAction.id, "举着人再按同一个键出投掷，不是再抓一次");
+        Assert.IsTrue(_character.Inversed, "前提：表里 flip true，投掷一进去就该转到反方向");
+
+        AttackInfo throwAttack = Info("PlayerThrow").attacks[0];
+        FrameRange open = Info("PlayerThrow").attackPhase[0].inFrames[0];
+        for (int guard = 0; guard < 12 && _action.CurrentFrame < open.min; guard++) TickFight();
+        Assert.AreEqual(open.min, _action.CurrentFrame, "前提：走到投掷那记盒子开着的第" + open.min + "拍");
+        ApplyHit(_character, _target, throwAttack);
+
+        TickFight();
+        Assert.AreEqual("Beaten", _target.action.CurrentAction.catalog,
+            "被摔出去走的是 Beaten 那一类（表里投掷那记的 targetActionChange）");
+        Assert.IsNull(_target.HeldBy, "被举者一换动作，约束那一拍就该发现他不再是 Grabbed 了");
+
+        float releaseY = _target.transform.position.y;
+        float startX = _target.transform.position.x;
+        float highest = releaseY;
+        float furthestX = startX;
+        for (int i = 0; i < 140; i++)
+        {
+            TickFight();
+            Assert.IsNull(_target.HeldBy, "第" + (i + 1) + "拍又被人举起来了：解除必须是永久的");
+            highest = Mathf.Max(highest, _target.transform.position.y);
+            furthestX = Mathf.Min(furthestX, _target.transform.position.x);   //反手投掷，往 -x 飞
+        }
+
+        Assert.AreEqual(releaseY + 1.2f, highest, 0.1f,
+            "最高点就是表里 pushPower 的 y（Arc 的 4h·t(1−t) 在 t=0.5 取到 h）");
+        Assert.AreEqual(-2.5f, furthestX - startX, 0.15f,
+            "横向总位移就是表里的 2.5 米，方向是转到反方向之后的身前");
+        Assert.AreEqual(groundY, _target.transform.position.y, 1e-3f,
+            "抛物线走完就交还给重力，最后必须贴回地面，不然人被扔进地里或者停在半空");
+    }
+
+    /// <summary>
+    /// holdFrames 走完就撒手，哪怕举人者那条动作还没结束。
+    /// 【这条测的是 SetHoldConstraint 这个原语】：表里的 180 拍要跑到，用例不该等 3 秒
+    /// </summary>
+    [Test]
+    public void HoldExpiresAfterTheTableSaidSo()
+    {
+        BuildTarget();
+        StartRows("PlayerIdle", "PlayerIdle", "PlayerHold");
+        _character.SetHoldConstraint(_target, new Vector3(HoldX, HoldY, 0f), 4);
+
+        for (int i = 1; i <= 3; i++)
+        {
+            TickFight();
+            Assert.IsNotNull(_character.Holding, "第" + i + "拍还没到 4 拍，不该撒手");
+        }
+
+        TickFight();
+        Assert.IsNull(_character.Holding, "第 4 拍走完 holdFrames，两边都得放下");
+        Assert.IsNull(_target.HeldBy);
+    }
+
+    /// <summary>
+    /// 投掷那记合成盒的摆位，要正好罩住被 holdOffset 举着的人。
+    /// 【这条是数据耦合的闸门】：两处分别是"手在哪"和"盒子打到哪"，改一处不改另一处，
+    /// 投掷就会静默打空（人举在手里不放也摔不出去），而这种错在 Play Mode 里只表现为"按了没反应"。
+    /// 中心高度按靶子 prefab 上那只受击盒的 center.y 算，不假设 0.6
+    /// </summary>
+    [Test]
+    public void ThrowHitBoxIsPlacedOnTheHeldUnit()
+    {
+        BuildTarget();
+        Vector3 hold = Info("PlayerGrab").attacks[0].holdOffset;
+        Assert.AreEqual(180, Info("PlayerGrab").attacks[0].holdFrames, "前提：起手那一记才是要抓人的");
+        Assert.AreEqual(0, Info("PlayerThrow").attacks[0].holdFrames, "投掷自己不重新抓人");
+
+        CapsuleCollider body = _targetBody.GetComponent<CapsuleCollider>();
+        Assert.IsNotNull(body, "前提：靶子的受击盒是胶囊，中心高度从这里读");
+        Vector3 victimCenter = new Vector3(hold.x, hold.y + body.center.y, hold.z);
+
+        AttackBoxKey pose = Info("PlayerThrow").attackPhase[0].track[0];
+        Assert.Less(Mathf.Abs(pose.position.x - victimCenter.x), pose.size.x * 0.5f,
+            "盒子横向罩不住手里的人：投掷会打空");
+        Assert.Less(Mathf.Abs(pose.position.y - victimCenter.y), pose.size.y * 0.5f,
+            "盒子纵向罩不住手里的人：被举者的中心在 holdOffset.y 之上再加受击盒自己的 center.y");
+        Assert.Less(Mathf.Abs(pose.position.z - victimCenter.z), pose.size.z * 0.5f,
+            "盒子的车道厚度不够：0.5 米以内必须包住，不然人稍微错开一个车道就摔不出去");
+    }
+
+    /// <summary>
+    /// Arc 这一条曲线的形状：横向匀着走、纵向是个对称抛物线，两头都回到起跳高度。
+    /// 【直接问函数表而不是问角色】：它是个纯函数，把"最高点恰好在表里的 y"这件事和角色系统分开钉
+    /// </summary>
+    [Test]
+    public void ArcTweenGoesUpAndBackDownWithinTheFramesListed()
+    {
+        ForceMove move = ForceMove.FromData(new MoveInfo
+        {
+            inFrames = 20,
+            moveDistance = new Vector3(2f, 1f, 0f),
+            tweenMethod = "Arc",
+        });
+
+        float x = 0f, y = 0f, highest = 0f;
+        //多走一拍：MoveTween 是先取本拍再 Advance，所以走完 inFrames 拍时进度只到 (inFrames-1)/inFrames，
+        //最后那一小段要等下一拍才落地——真实移动拍也是这个节奏，用例就照它走 21 拍
+        for (int i = 0; i <= 20; i++)
+        {
+            Vector3 step = move.MoveTween(move);
+            x += step.x;
+            y += step.y;
+            highest = Mathf.Max(highest, y);
+            move.Advance();
+        }
+
+        Assert.AreEqual(2f, x, 1e-4f, "横向走满就是表里的 moveDistance.x");
+        Assert.AreEqual(0f, y, 1e-4f, "抛物线两头都在同一个高度：走完这一程不能把人留在半空");
+        Assert.AreEqual(1f, highest, 0.06f, "最高点就是表里的 y（4h·t(1−t) 在 t=0.5 取到 h）");
     }
 }

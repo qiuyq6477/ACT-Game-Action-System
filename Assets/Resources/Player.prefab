@@ -1446,6 +1446,7 @@ MonoBehaviour:
   - Kick1
   - TwinKick
   - TwinKickAutoCombo
+  - Grabbed
   defaultActionId: BoxingStand
   moveSpeed: 4
   depthSpeedRate: 0.8

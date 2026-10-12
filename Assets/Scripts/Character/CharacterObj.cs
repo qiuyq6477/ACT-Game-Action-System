@@ -316,6 +316,10 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     private void Move()
     {
+        //被举着的人不自己算位置：地面探测会把他snap回地面，而约束要的是"悬在举人者手边"，
+        //两件事同拍发生就会被抹平。他的坐标由 ApplyHolds 那一拍统一写
+        if (HeldBy != null) return;
+
         Vector3 was = transform.position;
         Vector3 moved = ThisTickMove();
         Vector3 to = was + moved;
@@ -401,6 +405,9 @@ public class CharacterObj : MonoBehaviour
             {
                 CharacterObj b = all[j];
                 if (!b) continue;
+                //被举着的人不参与推挤：他的位置由约束那一拍说了算，推一下会被下一拍的约束拉回来，
+                //表现是"手里的人在抖"
+                if (a.HeldBy != null || b.HeldBy != null) continue;
 
                 float need = a.laneRadius + b.laneRadius;
                 Vector3 pa = a.transform.position;
@@ -725,6 +732,142 @@ public class CharacterObj : MonoBehaviour
         if (upSpeed <= 0f) return;
         _curWeight = -upSpeed;   //正数表示往下，所以起跳取负
         State = MoveState.Airborne;
+    }
+
+    /// <summary>
+    /// 我此刻举着谁，没举着就是 null。派生门禁 HoldingUnit 读的就是它
+    /// </summary>
+    public CharacterObj Holding => _holding;
+
+    /// <summary>
+    /// 谁举着我。不为 null 时自己的移动拍与同轨推挤都要让位，位置由约束那一拍统一写
+    /// </summary>
+    public CharacterObj HeldBy { get; private set; }
+
+    private CharacterObj _holding;
+    private Vector3 _holdOffset;
+    private int _holdFramesLeft;
+    private long _holdSetFrame = -1;
+
+    /// <summary>
+    /// 两端被举起来那一刻各自的动作 id，是"什么时候算挣脱"的基准。
+    /// null 表示还没记：约束是在命中结算那一拍建立的，而被举者的换动作只是排进了预约列表，
+    /// 要等下一拍的动作拍才真的生效——当场就记的话记到的是挨打之前那个动作，下一拍必然误判成"挣脱了"
+    /// </summary>
+    private string _heldActionId;
+
+    private string _holdHolderActionId;
+
+    /// <summary>
+    /// 表里这一记攻击写了 holdFrames，就打人之后顺手把人举起来。
+    /// 不是抓人的攻击（holdFrames 为 0）、或者对面已经被别人举着，就什么都不做
+    /// </summary>
+    /// <param name="defender">被打中的人，也就是要被举起来的</param>
+    /// <param name="attack">这一记攻击的表数据</param>
+    public void TryGrab(CharacterObj defender, AttackInfo attack)
+    {
+        if (attack.holdFrames <= 0) return;
+        //一个人不能被两个人同时举着：那样他的坐标每拍被写两次，两人在他身上一人拽一把
+        if (defender.HeldBy != null) return;
+        SetHoldConstraint(defender, attack.holdOffset, attack.holdFrames);
+    }
+
+    /// <summary>
+    /// 把 victim 挂到我身上：此后每个逻辑帧他的位置 = 我的位置 + offset。
+    /// 【为什么每拍重算而不是摆一次就完】：源工程是在进入举起状态那一刻把敌人摆到位
+    /// （PlayerGrabEnemy.Enter 里一次 transform.position），于是玩家一动敌人就留在原地飘着。
+    /// 这里改成每拍跟着算，玩家怎么走、被举者就怎么跟，台阶和边界也一样
+    /// </summary>
+    /// <param name="victim">被举者</param>
+    /// <param name="offset">相对我脚底的偏移，x 是"身前"（会按我的朝向镜像），y 是高度，z 是车道（不镜像）</param>
+    /// <param name="holdFrames">最多举多少逻辑帧，来自表里的 holdFrames</param>
+    public void SetHoldConstraint(CharacterObj victim, Vector3 offset, int holdFrames)
+    {
+        if (victim == null || victim == this) return;
+        //手里已经有人：先放下旧的，一个人一次只举一个
+        if (_holding != null) ReleaseHold();
+
+        _holding = victim;
+        victim.HeldBy = this;
+        _holdOffset = offset;
+        _holdFramesLeft = holdFrames;
+        _holdSetFrame = LogicClock.Frame;
+        _heldActionId = null;
+        _holdHolderActionId = null;
+    }
+
+    /// <summary>
+    /// 解除约束，两端都要解——只解自己这头，被举者还以为自己悬在别人手里，移动拍会一直空着
+    /// </summary>
+    public void ReleaseHold()
+    {
+        if (_holding == null) return;
+        _holding.HeldBy = null;
+        _holding = null;
+        _holdFramesLeft = 0;
+        _heldActionId = null;
+        _holdHolderActionId = null;
+    }
+
+    /// <summary>
+    /// 抓取约束那一拍，TickAll 的最后一拍：所有角色都写完了本帧坐标，被举者才按举人者的**本帧**位置摆。
+    /// 排在同轨推挤之后是必须的，推挤那一拍已经不承认被举着的人（见 SeparateLanes）。
+    /// 【三种解除】被举者换了动作（被摔出去、被打死、自己挣脱，在表里都长成"动作 id 变了"这一件事）、
+    /// 举人者换的动作没写 keepHold（挨了一记受击、或者投掷已经出手）、表里的 holdFrames 走完。
+    /// 【那一拍只摆位不记 id】：见 _heldActionId 的说明
+    /// </summary>
+    /// <param name="all">GameMain 手里那份全体角色</param>
+    public static void ApplyHolds(CharacterObj[] all)
+    {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.HoldApply);
+        for (int i = 0; i < all.Length; i++)
+        {
+            CharacterObj holder = all[i];
+            if (!holder) continue;
+            CharacterObj victim = holder._holding;
+            if (victim == null) continue;
+
+            if (--holder._holdFramesLeft <= 0)
+            {
+                holder.ReleaseHold();
+                continue;
+            }
+
+            string holderId = holder.action.CurrentAction.id;
+            string victimId = victim.action.CurrentAction.id;
+            if (holder._heldActionId == null)
+            {
+                if (LogicClock.Frame > holder._holdSetFrame)
+                {
+                    holder._heldActionId = victimId;
+                    holder._holdHolderActionId = holderId;
+                }
+            }
+            else if (victimId != holder._heldActionId)
+            {
+                holder.ReleaseHold();
+                continue;
+            }
+            else if (holderId != holder._holdHolderActionId)
+            {
+                //举人者还在抓取系动作里（举起→抓取拳→回到举起），约束继续，只把基准换成新动作
+                if (!holder.action.CurrentAction.keepHold)
+                {
+                    holder.ReleaseHold();
+                    continue;
+                }
+
+                holder._holdHolderActionId = holderId;
+            }
+
+            //x 按朝向镜像，z 不镜像：x 是"身前身后"这个面向空间的轴，z 是屏幕纵向的车道，
+            //跟朝哪边无关（同 NatureMove 里对纵深那一项的处理）
+            Vector3 p = holder.transform.position;
+            float forward = holder.Inversed ? -holder._holdOffset.x : holder._holdOffset.x;
+            victim.transform.position = p + new Vector3(forward, holder._holdOffset.y, holder._holdOffset.z);
+        }
+
+        GcProbe.End(GcProbe.Region.HoldApply, gcProbe);
     }
 }
 

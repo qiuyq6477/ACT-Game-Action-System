@@ -292,6 +292,11 @@ MonoBehaviour:
   - PlayerKnockDownGrounded
   - PlayerStandUp
   - PlayerDeath
+  - PlayerGrab
+  - PlayerHold
+  - PlayerGrabPunch
+  - PlayerGrabKick
+  - PlayerThrow
   defaultActionId: PlayerIdle
   moveSpeed: 4
   depthSpeedRate: 0.8

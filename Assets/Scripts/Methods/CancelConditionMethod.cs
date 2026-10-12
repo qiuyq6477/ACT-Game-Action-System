@@ -31,6 +31,7 @@ public static class CancelConditionMethod
         {
             {"StateIs", EvalStateIs},
             {"NearbyUnitInCatalog", EvalNearbyUnit},
+            {"HoldingUnit", EvalHoldingUnit},
         };
 
     /// <summary>
@@ -95,8 +96,15 @@ public static class CancelConditionMethod
                                        "，非正数意味着谁都算在近处之外");
                 }
                 break;
+            case "HoldingUnit":
+                if (param.Length == 0)
+                    Debug.LogError(ownerId + " 的 HoldingUnit 没写参数：要 With / Without 中的一个" +
+                                   "（With=手里正举着人才成立，投掷和抓取追击用；Without=空着手才成立，抓取起手用）");
+                else if (param[0] != "With" && param[0] != "Without")
+                    Debug.LogError(ownerId + " 的 HoldingUnit 参数是 \"" + param[0] + "\"，只认 With / Without");
+                break;
         }
-        //新增一个函数就要在这里补一条 case：认参数是这两个函数唯一的"写错了会怎样"的口径
+        //新增一个函数就要在这里补一条 case：认参数是这几条函数唯一的"写错了会怎样"的口径
     }
 
     /// <summary>
@@ -136,5 +144,17 @@ public static class CancelConditionMethod
                 out float parsed) && parsed > 0f) range = parsed;
 
         return CharacterObj.AnyOtherInCatalog(self, catalog, range);
+    }
+
+    /// <summary>
+    /// "此刻手里有没有举着人"。抓取系三招共用同一个键，靠它分流：
+    /// 空着手按抓取键出抓取起手（Without），举着人按同一个键出投掷（With）——
+    /// 【为什么不靠优先级硬压】：两条都是同一个键的候选，平手时取的是 AllActions 里的先后，
+    /// 那等于把"这一下摔出去还是再抓一次"交给填表顺序决定（同 1.7 里 PlayerIdle 挤掉普攻那一类问题）
+    /// </summary>
+    private static bool EvalHoldingUnit(CharacterObj self, string[] param)
+    {
+        bool wantHolding = param != null && param.Length > 0 && param[0] == "With";
+        return self.Holding != null == wantHolding;
     }
 }

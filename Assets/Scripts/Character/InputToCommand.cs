@@ -43,9 +43,9 @@ public class InputToCommand : MonoBehaviour
     private int _nonDirectCooldownFrames = 0;
 
     //本渲染帧poll到的按键状态，逻辑帧共用它（见下面的采样与推进为什么要拆开）
-    //Block 与 Jump 用 KeyCode 而不是 Input.GetButton：虚拟按钮要在 ProjectSettings/InputManager 里配一条轴，
+    //Block、Jump 与 Grab 用 KeyCode 而不是 Input.GetButton：虚拟按钮要在 ProjectSettings/InputManager 里配一条轴，
     //而这份配置得编辑器启动时重读才生效。Step 2 换新版 Input System 时它们会和其他键一起进 action map
-    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward, _sBlock, _sJump;
+    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward, _sBlock, _sJump, _sGrab;
 
     /// <summary>
     /// Unity的按键状态每渲染帧只poll得到一次，所以采样必须在逻辑时钟之外做。
@@ -60,6 +60,7 @@ public class InputToCommand : MonoBehaviour
         _sKick = Input.GetButton("Kick");
         _sBlock = Input.GetKey(KeyCode.LeftShift);
         _sJump = Input.GetKey(KeyCode.Space);
+        _sGrab = Input.GetKey(KeyCode.E);
 
         float xInput = Input.GetAxis("Horizontal");
         float yInput = Input.GetAxis("Vertical");
@@ -129,6 +130,11 @@ public class InputToCommand : MonoBehaviour
                 if (_sJump)
                 {
                     AddInput(KeyMap.Jump);
+                    noKey = false;
+                }
+                if (_sGrab)
+                {
+                    AddInput(KeyMap.Grab);
                     noKey = false;
                 }
 
@@ -412,6 +418,11 @@ public enum KeyMap
     /// 空中重复按不会二段跳——招式表里起跳那行的门禁是 StateIs Grounded
     /// </summary>
     Jump = 103,
+    /// <summary>
+    /// 抓取/投掷键（源工程就是同一个 Grab 键：没举人时试着抓，举着人时把人摔出去）。
+    /// 和拳脚跳跃一样吃那个 6 拍节流。两种含义分开靠表里的门禁 HoldingUnit，不靠这个键
+    /// </summary>
+    Grab = 104,
     Backward = 4,
     UpBackward = 7,
     Up = 8,

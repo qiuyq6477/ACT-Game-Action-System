@@ -30,6 +30,7 @@ public static class GcProbe
         BoxPose,
         SampleOverlaps,
         LaneSeparate,
+        HoldApply,
         Count
     }
 
