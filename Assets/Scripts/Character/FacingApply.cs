@@ -46,5 +46,32 @@ public class FacingApply : MonoBehaviour
         Vector3 scale = transform.localScale;
         scale.x = inversed ? -Mathf.Abs(scale.x) : Mathf.Abs(scale.x);
         transform.localScale = scale;
+        UnmirrorColliderShapes(inversed);
     }
+
+    /// <summary>
+    /// 子节点上的碰撞体形状，把父节点那个负号抵消掉。
+    /// 【为什么必须抵消】：PhysX 不认负的 lossyScale，BoxCollider 会每帧喊一条
+    /// "does not support negative scale or size"，而那条日志本身就在热路径上分配（顿挫那几拍尤其明显）。
+    /// 【为什么抵消了不影响判定】：矩形和胶囊都是对称的，符号只改形状朝向不改大小；
+    /// 而"盒子在身前还是身后"是节点的 localPosition 乘父节点缩放算出来的，跟节点自己的缩放无关，
+    /// 所以镜像照旧由父节点完成，这里只是把形状那一侧的符号翻回 PhysX 认识的那一边
+    /// </summary>
+    /// <param name="inversed">true = 朝左，父节点的 x 是负的</param>
+    private void UnmirrorColliderShapes(bool inversed)
+    {
+        //换动作那一拍才跑，但一次 GetComponentsInChildren 就是一次数组分配，所以认全一次就存着
+        if (_shapes == null) _shapes = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < _shapes.Length; i++)
+        {
+            Transform t = _shapes[i].transform;
+            //根节点跳过：它的 x 符号就是"面向"本身，翻回去等于人不转身了
+            if (t == transform) continue;
+            Vector3 s = t.localScale;
+            s.x = inversed ? -Mathf.Abs(s.x) : Mathf.Abs(s.x);
+            t.localScale = s;
+        }
+    }
+
+    private Collider[] _shapes;
 }
