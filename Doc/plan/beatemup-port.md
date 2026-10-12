@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2、2.3（波次 + 边界 + 血条）· 2026-10；剩输入层、弹射物与道具、视差背景与白闪、敌兵精灵）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1–2.4 · 2026-10；剩输入层、弹射物与道具、视差背景、敌兵精灵）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -364,6 +364,20 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 - 波次表里每一只都生在边界**以内**由用例钉住：夹是每拍在 `Move` 里做的，越界的出生点表现成"一出场就被弹回墙上"，看上去像移动出 bug 而不是表填错。
 
 **验证**：EditMode 71/71 全绿（第21区四条：相机两头夹住 / 区间内不干涉 / 边界算反了退回不夹；表里每只在界内；血条按 hp 走且没组件是满格；代码搭 UI 搭得出来、越界的数夹在 0~1）。批处理 Play 探针：`Player(Clone)` 带着 `hp=60 atk=20 poise=20` 生成在表里那个 12.50，第一波 2 只、跟玩家保持 0.9~1.2 米、车道对齐，血条那条改动没有引入新的异常（日志里唯一一条 Exception 是 Unity 自己的 QuickSearch `SearchDatabase`，与本工程无关）。分区数字仍是上一节那两条（含 `Doc/issue/enemy-spawn-thinks-in-ai-beat.md` 登记的 `EnemyThink max=2592`，本切片没动那条路径）。
+
+### 切片 2.4 受击白闪与伤害飘字 · 已实施 · 2026-10
+
+解决的问题：1.9 做完数值之后"打到了"只剩两条通道在说话（顿一下、摆出受击姿势），第三条——亮一下 + 顶个数字——一直缺；而伤害数值玩家其实看不见，血条只说"他还剩多少"，不说"这一下狠不狠"。这一条从 1.9 的"顺延"里挪出来单独做完。
+
+- **`Presentation/HitFlash`**：白闪走 `MaterialPropertyBlock`，**不换材质**。源工程是 `sr.material = Resources.Load("HitFlashMat")` 挂 `.1s` 再换回来，那在 Unity 里每命中就实例化一份材质；而想"读回原来的颜色"也得经过 `Renderer.material`，同样是实例化。所以退回原样用的是 `SetPropertyBlock(null)` 整块清掉——我们本来就不知道原来的颜色。`_Color` 是**乘色**，所以亮白要写大于 1 的数（混白在深色贴图上看不出来）。`Renderer` 这个基类同时管住灰盒的 `MeshRenderer` 与精灵的 `SpriteRenderer`，两个 shader 都认 `_Color`。时长 6 拍（= 源工程 `Enemy.prefab` 的 `hitFlashDuration: 0.1`）。
+- **`Presentation/DamagePopups`**：世界空间 `TextMesh` 而不是 uGUI `Text`——后者每改一次文字就重建一次 canvas，而命中那一拍已经在顿挫、换动作、摆盒子了。池 12 格循环复用（超出就回头覆盖最早的，群战不会把池撑爆），寿命 42 拍，边飘 0.7 米边收回。
+- **数字是开机烤的表**：`number.ToString()` 每记命中分配一次字符串，正是 `Doc/issue/hit-event-heap-alloc.md` 那一类；伤害是有限范围的东西，`0..99` 加一条「99+」共 101 个字符串烤一次就够。表里**下标 0 是空串**：格挡那一记伤害为 0，冒一个「0」出来等于告诉玩家"你白防了"，所以 `Show` 自己也把 `damage <= 0` 挡掉。
+- **接线只有一处**：`CombatPipeline.ResolveHit` 在 `Settle` 之后发请求（掉血才闪、才飘）。组件在 `CharacterObj.BindBoxes` 里就挂好，命中那一拍只改数；没渲染器/没绑飘字就是空操作，所以带灰盒的老工程行为一项不变（缺省站在老行为那一边）。两者都由 `TickAll` 最后那一拍（表现回收）计数——`PoolTick` 分区现在是"特效池 + 白闪 + 飘字"三样共用。
+- 结掉 `Doc/issue/hit-event-heap-alloc.md`：它点名的两条（`ForceMove`、`HitRecord` 转 struct）在 1.9 已落地，本次复验的数在下面；剩下的尖峰集中在"换波那一段"与"打死那一记"，前者已登记成 `Doc/issue/enemy-spawn-thinks-in-ai-beat.md`，后者是引擎内部的 `anim.CrossFade`（`ActionController.ChangeAction` 的注释早就写明它的大头不在我们写的代码里）。
+
+**验证**：EditMode 76/76 全绿（第22区五条：闪按拍数走完自己清干净、组件在绑定时就备好而命中那拍不再 `AddComponent`、数字来自预烤表且 0 伤害不冒字、字在 `LifeFrames` 里往上飘然后收回、超出容量回头复用而不加长池子、以及**打真入口** `ResolveHit` 掉血那一记同时点亮闪与飘字而格挡那一记两个都不出现）。批处理 Play 探针：安静窗口 `PoolTick avg=0 max=0`、`EnemyThink avg=0 max=0`，其余分区除 `SampleOverlaps max=108` 外全 0；换波 + 打死那一段才有 `EnemyThink max=2592`（新生成的人身上冷结构长起来那一次）与 `ChangeByCatalog avg=316`（`CrossFade` 在引擎内部），两条都有解释。
+
+**偏离**：格挡没有做火花/弹刀特效（源工程有 `DefendEffect`），它需要的是一张"命中但没掉血"的 cue，归 cue 表那边一起加；受击白闪对 3D 灰盒与精灵是同一条路径，但灰盒的 shader 半透不支持乘色时只会不明显，不会报错。
 
 ### 顺带：恢复闸门
 

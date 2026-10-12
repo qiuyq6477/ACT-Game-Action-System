@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十六件事：
+/// 钉的十七件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -114,6 +114,7 @@ public class ActionFrameClockTests
         if (_receiverGo != null) Object.DestroyImmediate(_receiverGo);
         for (int i = 0; i < _waveRigs.Count; i++) if (_waveRigs[i] != null) Object.DestroyImmediate(_waveRigs[i]);
         for (int i = 0; i < _hudRoots.Count; i++) if (_hudRoots[i] != null) Object.DestroyImmediate(_hudRoots[i]);
+        if (_popupGo != null) Object.DestroyImmediate(_popupGo);
         _hudRoots.Clear();
         _waveRigs.Clear();
         _waveUnits.Clear();
@@ -2878,5 +2879,139 @@ public class ActionFrameClockTests
         Assert.AreEqual(0f, bar.Value, 1e-4f, "夹在 0~1");
         bar.SetValue(3f);
         Assert.AreEqual(1f, bar.Value, 1e-4f);
+    }
+
+    //================================ 第22区：受击白闪与伤害飘字（切片 2.4） ====================================
+    //这两件都是"打到了"的第三条通道：顿挫说"停了一下"、受击姿势说"打中了谁"、
+    //亮一下和顶个数字说"这一下有多狠"。它们全部由逻辑帧计数，所以拍数能钉死。
+
+    private GameObject _popupGo;
+    private DamagePopups MakePopups()
+    {
+        _popupGo = new GameObject("ACT-Test-Popups");
+        _popupGo.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        DamagePopups p = _popupGo.AddComponent<DamagePopups>();
+        p.Init();
+        return p;
+    }
+
+    [Test]
+    public void HitFlashCountsDownInLogicFramesAndCleansItself()
+    {
+        BuildTarget();                       //BindBoxes 里就把 HitFlash 挂好了，命中那一拍不再 AddComponent
+        Assert.NotNull(_target.GetComponent<HitFlash>(), "组件该在绑定的时候就备好");
+
+        _target.BeginHitFlash(HitFlash.DefaultFrames);
+        HitFlash flash = _target.GetComponent<HitFlash>();
+        Assert.AreEqual(HitFlash.DefaultFrames, flash.FramesLeft, "开始闪就是整段拍数");
+
+        for (int i = 0; i < HitFlash.DefaultFrames - 1; i++)
+        {
+            LogicClock.Advance();
+            _target.TickHitFlash();
+        }
+        Assert.AreEqual(1, flash.FramesLeft, "还没到点");
+
+        LogicClock.Advance();
+        _target.TickHitFlash();
+        Assert.AreEqual(0, flash.FramesLeft, "到点自己退回来，不是一直白着");
+
+        _target.BeginHitFlash(0);
+        Assert.AreEqual(0, flash.FramesLeft, "0 拍就是不许闪——格挡那一记走的正是这条");
+    }
+
+    /// <summary>
+    /// 飘字的数字是开机烤好的一张表，运行期只按下标取，所以 `Show` 一次都不分配字符串。
+    /// 0 那一格是空串：挡住的一记伤害是 0，冒一个「0」出来等于告诉玩家"你白防了"
+    /// </summary>
+    [Test]
+    public void DamagePopupNumbersComeFromAPreBakedTable()
+    {
+        Assert.AreEqual(0, DamagePopups.NumberIndex(0f), "没掉血就是第 0 格（空串）");
+        Assert.AreEqual(7, DamagePopups.NumberIndex(7.4f), "小数按四舍五入，7.4 是 7");
+        Assert.AreEqual(8, DamagePopups.NumberIndex(7.6f));
+        Assert.AreEqual(DamagePopups.MaxNumber + 1, DamagePopups.NumberIndex(120f), "超出表尾就归到 99+ 那一格");
+
+        DamagePopups p = MakePopups();
+        DamagePopups.Show(new Vector3(1f, 0f, 0f), 120f);
+        Assert.AreEqual("99+", p.TextAt(0));
+
+        DamagePopups.Show(new Vector3(2f, 0f, 0f), 0f);
+        Assert.AreEqual(1, p.ActiveCount, "伤害是 0 的一记根本不冒字：格挡那一记走的正是这条");
+    }
+
+    [Test]
+    public void DamagePopupRisesAndIsTakenBackOnLifeFrames()
+    {
+        DamagePopups p = MakePopups();
+        Vector3 at = new Vector3(5f, 0f, -2f);
+        DamagePopups.Show(at, 7f);
+
+        Assert.AreEqual(1, p.ActiveCount);
+        Assert.AreEqual("7", p.TextAt(0));
+        float startY = p.TextAt(0) != null ? _popupGo.transform.GetChild(0).position.y : 0f;
+        Assert.GreaterOrEqual(startY, at.y + DamagePopups.StartHeight - 0.5f, "字要从头顶开始，不是压在脚上");
+
+        for (int i = 0; i < DamagePopups.LifeFrames - 1; i++)
+        {
+            LogicClock.Advance();
+            p.Tick();
+        }
+        Assert.AreEqual(1, p.ActiveCount, "差一拍就收，太急了看不清");
+        float risenY = _popupGo.transform.GetChild(0).position.y;
+        Assert.Greater(risenY, startY, "这一路是在往上飘");
+
+        LogicClock.Advance();
+        p.Tick();
+        Assert.AreEqual(0, p.ActiveCount, "满 LifeFrames 那一拍自己收回");
+    }
+
+    [Test]
+    public void PopupPoolRecyclesInsteadOfGrowing()
+    {
+        DamagePopups p = MakePopups();
+        for (int i = 0; i < DamagePopups.Capacity + 4; i++)
+            DamagePopups.Show(new Vector3(i, 0f, 0f), 3f);
+
+        Assert.AreEqual(DamagePopups.Capacity, p.ActiveCount, "同屏最多就是池里那几个");
+        Assert.AreEqual(DamagePopups.Capacity, _popupGo.transform.childCount, "一次都没有多 Instantiate");
+    }
+
+    /// <summary>
+    /// 打真入口：掉血的那一记要同时点亮闪和飘字，而被挡下的那一记两个都不许出现。
+    /// 这一条是"结算说话"与"表现说话"之间唯一的接线，所以必须用 `ResolveHit` 来验
+    /// </summary>
+    [Test]
+    public void ResolveHitDrivesFlashButBlockedBlowStaysQuiet()
+    {
+        BuildTarget();
+        DamagePopups p = MakePopups();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 1f, 0f);
+        //攻击者得真的站在出手那一行里：`AddHitRecord` 要在**当前动作**上按 phase 找那一记，
+        //站在 BoxingStand 上打一拳，命中记录那条路径会直接摸到空数组
+        AttackerIn("PlayerPunch1");
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];
+        BeHitBoxTurnOnInfo plain = Info("BoxingStand").defensePhase[0];
+        CombatPipeline.ResolveHit(_character, _target, in attack, in plain, _fist, _targetBody);
+        Assert.AreEqual(HitFlash.DefaultFrames, _target.GetComponent<HitFlash>().FramesLeft, "掉了血就该闪");
+        Assert.AreEqual(1, p.ActiveCount, "掉了血就该飘一个数字");
+
+        //第二记：格挡成立（受击方那一行写了 block，而且两人面对面），伤害是 0。
+        //受击阶段是 `ResolveHit` 的参数，不必真把角色切到那一行去——切了反而要动 prefab 的动作子集
+        BeHitBoxTurnOnInfo blocked = Info("PlayerDefend").defensePhase[0];
+        Assert.IsTrue(blocked.block, "前提：那一行写的是挡得住");
+        PlaceFaceToFace();
+        for (int i = 0; i < HitFlash.DefaultFrames; i++)   //把第一记的闪走完，第二记才好判断"没闪"
+        {
+            LogicClock.Advance();
+            _target.TickHitFlash();
+        }
+        Assert.AreEqual(0, _target.GetComponent<HitFlash>().FramesLeft, "前提：第一记的闪已经退干净");
+        int before = p.ActiveCount;
+        CombatPipeline.ResolveHit(_character, _target, in attack, in blocked, _fist, _targetBody);
+        Assert.AreEqual(0, _target.GetComponent<HitFlash>().FramesLeft, "挡住的一记不闪");
+        Assert.AreEqual(before, p.ActiveCount, "挡住的一记也不飘字");
     }
 }

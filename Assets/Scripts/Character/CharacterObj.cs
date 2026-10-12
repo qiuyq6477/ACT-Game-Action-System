@@ -153,6 +153,38 @@ public class CharacterObj : MonoBehaviour
     /// 这里不看表里的 forceDir，因为 forceDir 是"这一记设计上算从哪儿打"，
     /// 而能不能挡住取决于两个人此刻实际站哪儿
     /// </summary>
+    /// <summary>
+    /// 受击白闪。组件是这里按需挂的（跟 `CombatStats` 的"prefab 上有就认"不同）：
+    /// 它不需要美术在 prefab 上调任何东西，而 prefab 归编辑器管、动它就得走一次导入
+    /// </summary>
+    private HitFlash _hitFlash;
+
+    public void BeginHitFlash(int frames)
+    {
+        //组件在 BindBoxes 里就挂好了：命中那一拍只许改几个数，不许 AddComponent、也不许 GetComponent
+        if (frames <= 0 || _hitFlash == null) return;
+        _hitFlash.Begin(frames);
+    }
+
+    /// <summary>每逻辑帧一拍，由 `GameMain` 的表现回收拍统一叫</summary>
+    public void TickHitFlash()
+    {
+        if (_hitFlash != null) _hitFlash.Tick();
+    }
+
+    private void EnsureFlash()
+    {
+        if (_hitFlash == null)
+        {
+            _hitFlash = GetComponent<HitFlash>();
+            if (_hitFlash == null)
+            {
+                _hitFlash = gameObject.AddComponent<HitFlash>();
+                _hitFlash.Init();
+            }
+        }
+    }
+
     public bool FacesToward(CharacterObj other)
     {
         if (!other) return false;
@@ -253,6 +285,7 @@ public class CharacterObj : MonoBehaviour
         //一记打上去就是"已经死了"
         Stats = GetComponent<CombatStats>();
         Poise = GetComponent<PoiseGauge>();
+        EnsureFlash();
         //幂等赋值，重复调没有副作用（组件自己的 Awake 在 Play Mode 里还会再来一次，同样只是填回满值）
         if (Stats) Stats.Revive();
         if (Poise) Poise.Refill();

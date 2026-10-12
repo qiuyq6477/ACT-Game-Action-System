@@ -153,6 +153,8 @@ public class GameMain : MonoBehaviour
 
         _boxBuffer = new Collider[64];
 
+        _popups = gameObject.AddComponent<DamagePopups>();
+        _popups.Init();
         _playerHpBar = HudBar.Build("PlayerHpBar", new Vector2(0f, 1f), new Vector2(180f, 16f),
             new Color(0.85f, 0.22f, 0.28f));
         //相机自己在场景里摆好的位置先记下来，LateUpdate 之后每帧只改横向那一个分量
@@ -256,6 +258,9 @@ public class GameMain : MonoBehaviour
         //是这一拍派发出去的 cue 的到期时间，先逻辑后表现才不会有"这一拍的 cue 下一拍才被记进池子"
         long cueProbe = GcProbe.Begin(GcProbe.Region.PoolTick);
         _cueReceiver.Tick();
+        for (int i = 0; i < _all.Count; i++)
+            if (_all[i] != null) _all[i].TickHitFlash();
+        _popups.Tick();
         GcProbe.End(GcProbe.Region.PoolTick, cueProbe);
     }
 
@@ -310,6 +315,9 @@ public class GameMain : MonoBehaviour
 
     /// <summary>玩家那条血量（左上角）。开机搭一次，Update 里只在数值变了才写</summary>
     private HudBar _playerHpBar;
+
+    /// <summary>伤害飘字的池。开机挂一次，`CombatPipeline` 走它的静态入口</summary>
+    private DamagePopups _popups;
 
     /// <summary>相机横向能走的那两个数：边界 + 半个视口宽，Awake 里算一次</summary>
     private float _camLeft, _camRight;

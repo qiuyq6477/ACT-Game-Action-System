@@ -42,6 +42,15 @@ public static class CombatPipeline
         //推开给 pushPower 还是 blockPush——都要读它的结论，留在函数末尾就只能是注释
         DamagePayload hit = Settle(attacker, defender, in attackInfo, in defensePhase, attackBox, targetBox);
 
+        //掉了血就说话：白闪 + 头上顶个数字。这两个都是"请求"，没有渲染器/没绑飘字就是空操作，
+        //所以带灰盒的老工程一行行为都不会变（缺省站在老行为那一边）。
+        //格挡的那一记伤害是 0——挡住不该冒一个「0」出来，那是在告诉玩家"你白防了"
+        if (hit.Damage > 0f)
+        {
+            defender.BeginHitFlash(HitFlash.DefaultFrames);
+            DamagePopups.Show(defender.transform.position, hit.Damage);
+        }
+
         //动作改变，各自动作各自占优，所以>=和>的区别就在这里了
         ActionChangeInfo attackerChange =
             attackInfo.selfActionChange.priority >= defensePhase.attackerActionChange.priority
