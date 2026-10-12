@@ -9,7 +9,7 @@ using UnityEngine;
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的五件事：
+/// 钉的六件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -17,9 +17,14 @@ using UnityEngine;
 /// 5. 纵深车道（BeatEmUp 移植新增）：z 只由竖轴驱动、不随正反手镜像，且与横向共用同一个
 ///    inputAcceptance；RootMotion 的第四个参数缺省为 0（老表逐项不变）；同轨推挤只动 z，
 ///    重合时的方向由数组顺序定死。
+/// 6. 相交采样（BeatEmUp 移植新增）："这一拳打到谁"按逻辑帧主动查询，不再挂在物理步上——
+///    命中帧恰好等于表里窗口被跨过的帧、接触列表每拍清空重填、自己的盒子不算靶子、
+///    离开采样层的盒子查不到、沿纵深快速穿过也不漏拍。
+///    【这一组以前根本写不出来】：EditMode 不跑物理模拟，OnTriggerEnter 一次都不会来。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
-/// 不新建场景也不写进你正开着的场景。判定盒刷新和命中结算两拍不在这里跑——它们读的就是这里断言的那两个掩码。
+/// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
+/// 第11区（相交采样）另外把判定盒拍和采样拍也跑起来，因为它断言的就是"打到没有"。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -43,11 +48,14 @@ public class ActionFrameClockTests
         _character = character;
         _action = character.action;
         _input = character.input;
+        //EditMode里 Instantiate 不触发 Awake，判定盒的绑定要自己叫（第11区的采样用例离不开它）
+        character.BindBoxes();
     }
 
     [TearDown]
     public void TearDown()
     {
+        if (_targetRig != null) Object.DestroyImmediate(_targetRig);
         Object.DestroyImmediate(_rig);
     }
 
@@ -628,5 +636,248 @@ public class ActionFrameClockTests
         {
             Object.DestroyImmediate(secondRig);
         }
+    }
+
+    //==================================== 11. 相交采样：命中按逻辑帧算 ====================================
+
+    private GameObject _targetRig;
+    private CharacterObj _target;
+    private CharacterObj[] _pair;
+    private readonly Collider[] _hitBuffer = new Collider[64];
+    private AttackHitBox _fist;
+    private BeHitBox _targetBody;
+    private Collider _fistCol;
+    private Collider _bodyCol;
+
+    /// <summary>
+    /// 立第二个角色当靶子，从 Player.prefab 现取（所以受击盒在不在采样层上，这里一并被验到）。
+    /// 靶子只跑输入/动作/判定盒/采样四拍，不跑移动拍和推挤拍——那两拍会自己改坐标，
+    /// 而本组用例要把手动摆放的位置原封不动地保持住
+    /// </summary>
+    private void BuildTarget()
+    {
+        _targetRig = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
+        _targetRig.name = "ACT-Test-Target";
+        _targetRig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        _target = _targetRig.GetComponent<CharacterObj>();
+        _target.BindBoxes();
+        _target.action.SetAllActions(GameData.AllActions(), "BoxingStand");
+        _pair = new[] { _character, _target };
+
+        int punchTag = BoxTagRegistry.MaskOf("LeftPunch");
+        foreach (AttackHitBox b in _character.AttackBoxes)
+            if ((b.TagMask & punchTag) != 0) _fist = b;
+        int hurtTag = BoxTagRegistry.MaskOf("Hurt");
+        foreach (BeHitBox b in _target.BeHitBoxes)
+            if ((b.TagMask & hurtTag) != 0) _targetBody = b;
+        Assert.IsNotNull(_fist, "前提：Player.prefab 里得有 tag 为 LeftPunch 的攻击盒，表里 Punch1 开的就是它");
+        Assert.IsNotNull(_targetBody, "前提：靶子得有 tag 为 Hurt 的受击盒，BoxingStand 全程开着它");
+
+        _fistCol = _fist.GetComponent<Collider>();
+        _bodyCol = _targetBody.GetComponent<Collider>();
+        Assert.IsNotNull(_fistCol, "前提：攻击盒身上必须有碰撞体，主动采样查的就是它");
+        Assert.IsNotNull(_bodyCol, "前提：受击盒身上必须有碰撞体，否则它在采样里等于不存在");
+        Assert.AreEqual(LayerMask.NameToLayer("BeHitBox"), _targetBody.gameObject.layer,
+            "Player.prefab 里受击盒得归在 BeHitBox 层上，采样只查这一层");
+    }
+
+    /// <summary>
+    /// 盒子的世界中心。Collider本身没有center字段，只有派生形状有；
+    /// 这里不用 bounds.center，因为 bounds 读的是物理场景，而本帧的骨骼位移还没同步进去（同步是采样那一步才做的）
+    /// </summary>
+    private static Vector3 WorldCenter(Collider col)
+    {
+        Transform t = col.transform;
+        SphereCollider sphere = col as SphereCollider;
+        if (sphere) return t.TransformPoint(sphere.center);
+        CapsuleCollider capsule = col as CapsuleCollider;
+        if (capsule) return t.TransformPoint(capsule.center);
+        BoxCollider box = col as BoxCollider;
+        if (box) return t.TransformPoint(box.center);
+        Assert.Fail("用例只认 Sphere/Capsule/Box 三种盒子，遇到的是 " + col.GetType().Name);
+        return Vector3.zero;
+    }
+
+    /// <summary>
+    /// 把靶子的受击盒中心压到拳盒中心上，再沿 z 退开 dz 米。
+    /// 胶囊的轴正好穿过球心，于是"两个盒子重叠"的充要条件就是 |dz| ≤ 两个半径之和（0.3+0.3=0.6），
+    /// 期望值可以自己算出来，不用反过来问实现——这才是用例
+    /// 【为什么每帧都要摆】：拳盒挂在骨骼上，动画一跑它就动，摆一次追不住；
+    /// 而本组用例要断言的只有"盒子开在哪几拍"，几何重叠必须是恒真式（dz=0）
+    /// </summary>
+    private void PlaceTargetAtFistDepth(float dz)
+    {
+        Vector3 fist = WorldCenter(_fistCol);
+        Vector3 body = WorldCenter(_bodyCol);
+        _targetRig.transform.position += fist - body + new Vector3(0f, 0f, dz);
+    }
+
+    /// <summary>
+    /// 走一拍战斗链，顺序照 GameMain.TickAll：时钟→输入→动作→判定盒→相交采样。
+    /// 之后由用例自己决定要不要摆位置（摆了就得在采样之前）
+    /// </summary>
+    private void TickCombat(params KeyMap[] pressed)
+    {
+        LogicClock.Advance();
+        _input.Tick();
+        _target.input.Tick();
+        for (int i = 0; i < pressed.Length; i++) _input.AddInput(pressed[i]);
+        _action.Tick();
+        _target.action.Tick();
+        RefreshBoxes(_character);
+        RefreshBoxes(_target);
+        CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+    }
+
+    private static void RefreshBoxes(CharacterObj c)
+    {
+        foreach (AttackHitBox b in c.AttackBoxes) b.Tick();
+        foreach (BeHitBox b in c.BeHitBoxes) b.Tick();
+    }
+
+    private bool PunchLanded()
+    {
+        return _character.CanAttackTargetNow(_target, out AttackInfo _, out BeHitBoxTurnOnInfo _,
+            out AttackHitBox _, out BeHitBox _);
+    }
+
+    /// <summary>
+    /// 命中发生在表里开着盒子的那几拍，一拍不多一拍不少。
+    /// 【这条用例在改之前必然红】：旧实现靠 OnTriggerEnter，而 EditMode 根本不跑物理模拟，
+    /// 回调一次都不会来——换句话说"打到人"这件事以前整个在物理时钟上，用例连测都测不到它。
+    /// 现在它是逻辑帧上的整数比较，跟 BoxTagRegistry 里的窗口一样钉得住
+    /// </summary>
+    [Test]
+    public void HitsLandOnExactlyTheFramesTheTableOpensTheBox()
+    {
+        BuildTarget();
+        ActionInfo punch = Info("Punch1");
+        FrameRange window = punch.attackPhase[0].inFrames[0];
+        StartAction("Punch1");
+
+        for (int frame = 1; frame <= punch.durationFrames; frame++)
+        {
+            TickCombat();
+            PlaceTargetAtFistDepth(0f);
+            CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+            Assert.IsTrue(_targetBody.Active,
+                "第" + frame + "帧靶子的受击盒是关的：BoxingStand 的 defensePhase 覆盖全程，" +
+                "这条一旦不成立，下面的断言就变成在测受击盒开关而不是测采样");
+            Assert.AreEqual(LiveAt(window, frame), PunchLanded(),
+                "第" + frame + "帧：表里 Punch1 的窗口是[" + window.min + "," + window.max +
+                "]，命中必须恰好落在被跨过的那几拍（旧实现落在物理步上，错频时会漏拍也会多拍）");
+        }
+    }
+
+    /// <summary>
+    /// 接触列表每拍清空重填：靶子走开的那一拍就必须打不着，走回来那一拍又立刻打得着。
+    /// 旧的 OnTriggerEnter/Exit 是增量语义，Exit 因为错频没来，一条早就解除的接触就会永久脏在表里，
+    /// 表现是"人已经跑开了还能被连上"——那种 bug 只在看回放时才看得出来
+    /// </summary>
+    [Test]
+    public void TouchIsRebuiltEveryFrameNotIncrementallyMaintained()
+    {
+        BuildTarget();
+        StartAction("Punch1");
+        FrameRange window = Info("Punch1").attackPhase[0].inFrames[0];
+        //窗口按跨帧语义实际是第4/5/6帧，正好够三步：打着→走开→回来
+        Assert.GreaterOrEqual(window.max - window.min + 2, 3, "前提：窗口至少跨三拍，否则本用例走不完三步");
+
+        for (int i = 0; i < 4; i++) TickCombat();
+        PlaceTargetAtFistDepth(0f);
+        CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+        Assert.IsTrue(PunchLanded(), "第4帧：窗口开着而且重叠着，必须打着");
+
+        //沿 z 退开 2 米（半径之和只有 0.6），这一步之后几何上确实不再重叠
+        PlaceTargetAtFistDepth(2f);
+        TickCombat();
+        Assert.IsFalse(PunchLanded(), "第5帧：靶子走开了就必须立刻打不着，接触不许留在表里");
+
+        PlaceTargetAtFistDepth(0f);
+        TickCombat();
+        Assert.IsTrue(PunchLanded(), "第6帧：走回来要立刻重新打上，说明清空重填不是清了就没了");
+    }
+
+    /// <summary>
+    /// 自己的拳盒压在自己的受击盒上也算没打到。采样按盒子的主人过滤（bhb.master != master），
+    /// 而物理查询本身可不管是谁——两个盒子同层、同一个人身上，天然重叠
+    /// </summary>
+    [Test]
+    public void TheAttackersOwnHurtBoxesNeverCountAsATarget()
+    {
+        BuildTarget();
+        StartAction("Punch1");
+        BeHitBox own = null;
+        foreach (BeHitBox b in _character.BeHitBoxes)
+            if ((b.TagMask & BoxTagRegistry.MaskOf("Hurt")) != 0) own = b;
+        Collider ownCol = own.GetComponent<Collider>();
+
+        for (int i = 0; i < 4; i++) TickCombat();
+        //把拳盒按到自己的受击盒中心上：几何上真重叠了，下面那条断言测的才是主人过滤
+        _fistCol.transform.position = WorldCenter(ownCol);
+        CharacterObj.SampleOverlaps(new[] { _character }, _hitBuffer);
+        Assert.IsTrue(_fist.Active, "前提：这一拍拳盒是开着的，否则什么都没测到");
+        Assert.IsTrue(own.Active, "前提：这一拍自己的受击盒也是开着的");
+        Assert.IsFalse(_character.CanAttackTargetNow(_character, out AttackInfo _, out BeHitBoxTurnOnInfo _,
+                out AttackHitBox _, out BeHitBox _),
+            "自己打自己：受击盒属于攻击方自己，采样必须把它滤掉");
+    }
+
+    /// <summary>
+    /// 大幅快速位移下不漏拍：靶子每帧沿 z 走 0.5 米（合 30 米/秒，比击退和冲刺还快），
+    /// 穿过拳头的那几帧必须一帧不落地记下来。
+    /// 以前这条根本无从谈起——物理步是 50Hz（0.02 秒），两个物理步之间角色能走 0.6 米，
+    /// 盒子是"穿过去"而不是"重叠过"，窄窗口就静默打空。
+    /// 期望值 |dz| ≤ 0.6 是按几何自己算的（两个半径之和），没有回头问实现
+    /// </summary>
+    [Test]
+    public void FastPassAlongDepthIsCaughtOnEveryOverlappingFrame()
+    {
+        BuildTarget();
+        Vector3 scale = _fistCol.transform.lossyScale;
+        Assert.Less(Mathf.Abs(1f - Mathf.Abs(scale.x)) + Mathf.Abs(1f - Mathf.Abs(scale.y)) +
+                    Mathf.Abs(1f - Mathf.Abs(scale.z)), 0.01f, "前提：拳盒所在骨骼不带缩放，半径才是世界单位");
+
+        float reach = ((SphereCollider)_fistCol).radius + ((CapsuleCollider)_bodyCol).radius;
+        Assert.AreEqual(0.6f, reach, 1e-5f, "前提：接触厚度=两个半径之和");
+
+        ActionInfo punch = Info("Punch1");
+        FrameRange window = punch.attackPhase[0].inFrames[0];
+        StartAction("Punch1");
+
+        //第1帧从 +1.5 米开始，每帧往 -z 走 0.5 米，七帧穿到 -1.5 米：途中正好三帧在接触厚度以内
+        for (int frame = 1; frame <= 7; frame++)
+        {
+            float dz = 1.5f - 0.5f * (frame - 1);
+            TickCombat();
+            PlaceTargetAtFistDepth(dz);
+            CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+            bool expected = Mathf.Abs(dz) <= reach && LiveAt(window, frame);
+            Assert.AreEqual(expected, PunchLanded(),
+                "第" + frame + "帧靶子在 dz=" + dz + " 处，重叠=" + (Mathf.Abs(dz) <= reach) +
+                "、窗口开着=" + LiveAt(window, frame) + "，两个条件同时成立才算打到");
+        }
+    }
+
+    /// <summary>
+    /// 采样只查 BeHitBox 那一层：把受击盒挪回 Default 层，几何上照样重叠但什么都查不到。
+    /// 这条钉的是"地面、道具、别的攻击盒不会来挤占查询缓冲区"这层过滤——
+    /// 缓冲区只有 64 格，一个场景里的大碰撞体要是能进来，角色一多就溢出漏判
+    /// </summary>
+    [Test]
+    public void HurtBoxesOnAnotherLayerAreInvisibleToSampling()
+    {
+        BuildTarget();
+        StartAction("Punch1");
+        for (int i = 0; i < 4; i++) TickCombat();
+        PlaceTargetAtFistDepth(0f);
+        CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+        Assert.IsTrue(PunchLanded(), "前提：还在采样层上时是打着的，否则下面那条断言什么都没测到");
+
+        _targetBody.gameObject.layer = LayerMask.NameToLayer("Default");
+        TickCombat();
+        PlaceTargetAtFistDepth(0f);
+        CharacterObj.SampleOverlaps(_pair, _hitBuffer);
+        Assert.IsFalse(PunchLanded(), "第5帧：盒子离开采样层就必须查不到，层掩码是查询的第一道过滤");
     }
 }

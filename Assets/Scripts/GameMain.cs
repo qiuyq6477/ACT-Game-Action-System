@@ -33,9 +33,16 @@ public class GameMain : MonoBehaviour
     private double _accumulator = 0;
 
     /// <summary>
-    /// player和enemy的合成，为了每个逻辑帧能按同一顺序走一遍（Awake里拼好，不在热路径里分配）
+    /// player和enemy的合成，为了每个逻辑帧按同一顺序走一遍（Awake里拼好，不在热路径里分配）
     /// </summary>
     private CharacterObj[] _all;
+
+    /// <summary>
+    /// 相交采样的常驻缓冲区。命中采样每逻辑帧要查若干个攻击盒，NonAlloc系列必须由调用方备好数组；
+    /// 容量64是"同屏受击盒总数"的上限，一个角色2个受击盒的话能撑到32个角色，
+    /// 真溢出了AttackHitBox会当场喊（它只报一次，不会刷日志）
+    /// </summary>
+    private Collider[] _boxBuffer;
 
     void Awake()
     {
@@ -58,6 +65,8 @@ public class GameMain : MonoBehaviour
         _all = new CharacterObj[enemy.Count + 1];
         _all[0] = player;
         enemy.CopyTo(_all, 1);
+
+        _boxBuffer = new Collider[64];
     }
 
     private void Update()
@@ -78,9 +87,11 @@ public class GameMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→命中结算→计时与移动→同轨推挤。
+    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤。
     /// 以前这五家各写各的Update，谁先谁后由Unity决定，同一份代码换台机器就会差一帧。
-    /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）
+    /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）。
+    /// 相交采样夹在判定盒与命中结算之间：盒子刚被刷新过，查到的就是"这一拍开着的那些盒"，
+    /// 而它读的位置是上一拍Move()写下的，这个滞后和以前物理回调的滞后一致
     /// 同轨推挤放在最后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
     /// 地面探测算出的 groundY 与 z 无关，所以推完不用再探地
     /// </summary>
@@ -92,6 +103,9 @@ public class GameMain : MonoBehaviour
             c.action.Tick();
         foreach (CharacterObj c in _all)
             TickBoxes(c);
+
+        //相交采样：命中不再等物理回调，每个逻辑帧主动查一次
+        CharacterObj.SampleOverlaps(_all, _boxBuffer);
 
         //处理攻击和碰撞
         DealWithAttacks();

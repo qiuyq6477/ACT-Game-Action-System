@@ -61,12 +61,29 @@ public class AttackHitBox : MonoBehaviour
 
     /// <summary>
     /// 把Inspector上填的tags翻译成位掩码。
-    /// 由CharacterObj.Awake顺带调用（那里本来就要遍历子组件认主人），
+    /// 由CharacterObj.BindBoxes顺带调用（那里本来就要遍历子组件认主人），
     /// 一定要在任何Update之前完成，否则盒子会以为自己的标签谁都不是
     /// </summary>
     public void BakeTagMask()
     {
         TagMask = BoxTagRegistry.MaskOf(tags);
+    }
+
+    /// <summary>
+    /// 自己那个碰撞体，由 `CharacterObj.BindBoxes` 缓存（那里本来就要遍历子组件认主人）。
+    /// 采样要拿它做形状查询，每帧GetComponent一次既慢又可能分配
+    /// </summary>
+    private Collider _collider;
+
+    /// <summary>
+    /// 缓冲区满过一次就只喊一声：溢出说明场上同层受击盒比容量还多，
+    /// 但每拍都刷一行日志会把真正的问题淹掉
+    /// </summary>
+    private static bool _bufferOverflowLogged;
+
+    public void BindCollider(Collider col)
+    {
+        _collider = col;
     }
 
     /// <summary>
@@ -78,22 +95,87 @@ public class AttackHitBox : MonoBehaviour
         TempPriority = master ? master.GetAttackBoxTempPriority(TagMask) : 0;
     }
 
-    private void OnTriggerEnter(Collider other)
+    /// <summary>
+    /// 拿本盒【当前这一逻辑帧】的位置和形状，主动去物理世界查一遍受击盒，查到的交给主人记账。
+    /// 【为什么不再是OnTriggerEnter】：物理回调的频率是物理步（本工程Fixed Timestep 0.02，即50Hz），
+    /// 而盒子开在哪几拍是60Hz的逻辑帧说了算的，两者互相滑移——只开一两拍的窄窗口可能静默打空，
+    /// 反过来也可能在盒子已经关掉的当帧多报一次；位移一大（击退、冲刺）盒子还会"穿过"而不是"重叠过"目标。
+    /// 换成主动采样之后，"这一拳打到谁"和"盒子开在哪几拍"用的是同一个整型帧时钟，跨帧率完全确定
+    /// </summary>
+    /// <param name="buffer">GameMain预分配的常驻缓冲区，绝不扩容绝不new</param>
+    public void SampleTouches(Collider[] buffer)
     {
-        //总是抓住每个盒子，至于那个盒子开不开，就交给CharacterObj判断
-        BeHitBox bhb = other.GetComponent<BeHitBox>();
-        if (bhb && master && bhb.master != master)
+        //关着的盒子不查：这就是"窄窗口"能被精确控制的原理
+        if (!Active || !master || !_collider) return;
+
+        int found = Overlap(buffer);
+        for (int i = 0; i < found; i++)
         {
-            master.OnAttackBoxHit(this, bhb);
+            //查询返回的是Collider，要拿回受击盒只能查BeHitBox那张表（GetComponent的分配行为随版本变）
+            if (BeHitBox.TryGet(buffer[i], out BeHitBox bhb) && bhb.master != master)
+                master.OnAttackBoxHit(this, bhb);
+        }
+
+        //NonAlloc在装满时返回的就是容量，多出来的相交被无声丢掉，所以必须喊一声
+        if (found == buffer.Length && !_bufferOverflowLogged)
+        {
+            _bufferOverflowLogged = true;
+            Debug.LogError("命中采样缓冲区溢出（容量" + buffer.Length +
+                           "）：这一拍可能有受击盒被漏掉，请调大GameMain._boxBuffer，注意它是一次性分配的常驻内存");
         }
     }
 
-    private void OnTriggerExit(Collider other)
+    /// <summary>
+    /// 按形状分派一次overlap查询，返回写进buffer的条数。
+    /// 三种形状是工程里用得上的全部：受击盒是Capsule，BeatEmUp的精灵盒子导出来是Box，
+    /// 本工程的攻击盒是Sphere。查不到形状就是配表事故，返回0而不是抛异常——
+    /// 一个盒子的形状写错不该让整局跑不下去
+    /// </summary>
+    private int Overlap(Collider[] buffer)
     {
-        BeHitBox bhb = other.GetComponent<BeHitBox>();
-        if (bhb && master && bhb.master != master)
+        Transform t = _collider.transform;
+        Vector3 scale = AbsLossyScale(t);
+
+        SphereCollider sphere = _collider as SphereCollider;
+        if (sphere)
+            return Physics.OverlapSphereNonAlloc(t.TransformPoint(sphere.center),
+                sphere.radius * Mathf.Max(scale.x, scale.y, scale.z), buffer, BeHitBox.QueryMask);
+
+        BoxCollider box = _collider as BoxCollider;
+        if (box)
+            return Physics.OverlapBoxNonAlloc(t.TransformPoint(box.center),
+                Vector3.Scale(box.size * 0.5f, scale), buffer, t.rotation, BeHitBox.QueryMask);
+
+        CapsuleCollider capsule = _collider as CapsuleCollider;
+        if (capsule)
         {
-            master.OnAttackBoxExit(this, bhb);
+            //胶囊的半径归另外两根轴、高度归direction那根轴，这是它唯一的几何拆法
+            int axis = capsule.direction;
+            float along = scale[axis];
+            float across = Mathf.Max(scale[(axis + 1) % 3], scale[(axis + 2) % 3]);
+            float radius = capsule.radius * across;
+            //PhysX要的是两端球心，而端头那两个半球各占一个radius，所以直线段是"高度减两个半径"
+            float halfSpan = Mathf.Max(0f, capsule.height * along * 0.5f - radius);
+            Vector3 center = t.TransformPoint(capsule.center);
+            Vector3 span = t.TransformVector(AxisLocal(axis) * halfSpan);
+            return Physics.OverlapCapsuleNonAlloc(center - span, center + span, radius, buffer, BeHitBox.QueryMask);
         }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// 各轴取绝对值：FacingApply的SpriteScaleX后端把localScale.x翻成负数来镜像精灵，
+    /// 而物理形状只认大小不认朝向，负号必须抹掉，否则查出来的盒子会翻到角色背后去
+    /// </summary>
+    private static Vector3 AbsLossyScale(Transform t)
+    {
+        Vector3 s = t.lossyScale;
+        return new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
+    }
+
+    private static Vector3 AxisLocal(int axis)
+    {
+        return axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
     }
 }

@@ -8,11 +8,13 @@
 - 往 `ActionInfo` 及其阶段结构体里加"运行期算出来的"字段时，必须标 `[NonSerialized]` 并在 `GameData.Load()` 里赋值：`Resources/GameData/Action.json` 是策划表，不往里塞派生字段。
 - `foreach` 遍历结构体数组拿到的是拷贝，改它的成员会直接编译不过（CS1654）：改表数据就先 `ActionInfo info = source;` 拷一份再改，改数组元素（数组本身是引用）就用带索引的 `for`。
 
-## 碰撞盒标签
+## 碰撞盒标签与命中采样
 
 - 只有 `BoxTagRegistry` 允许认识标签字符串，新增标签一律走 `MaskOf`；判定处只许位与 `(a & b) != 0`，不许再比字符串。
 - 标签的位号按注册先后分配，**同一次运行内稳定、跨运行会变**（各 prefab 的 Awake 顺序不固定）：日志和断言里只打标签名，别把掩码数字当常量。
-- 盒子组件的 `TagMask` 由 `CharacterObj.Awake` 顺带烘焙（那里本来就要遍历子组件认主人），必须早于第一个逻辑帧（盒子开关由 `GameMain` 的时钟刷新，已经没有各自的 Update 了）。
+- 盒子组件的绑定（认主人、烘焙 `TagMask`、认领碰撞体、建好每拍重填的接触列表）全在 `CharacterObj.BindBoxes()` 里，`Awake` 只调它：**EditMode 下 `Instantiate` 不触发 `Awake`**，用例要直接叫 `BindBoxes`。绑定必须早于第一个逻辑帧。
+- 命中相交给逻辑帧主动采样（`GameMain.TickAll` 的相交采样拍 → `CharacterObj.SampleOverlaps` → `AttackHitBox.SampleTouches`），**不许**再写 `OnTriggerEnter/Exit`：物理回调按 `Fixed Timestep 0.02`（50Hz）触发，与 60Hz 的逻辑帧错频，窄窗口静默打空、大位移直接穿过（`Doc/plan/beatemup-port.md` 切片 1.3）。
+- 相交查询只认 `BeHitBox` 层（`BeHitBox.QueryMask`），受击盒必须归到这一层，否则采不到；地面与道具因此天然被排除在缓冲区之外。
 - 标签总数上限 31，超了 `MaskOf` 报错并返回 0（该标签从此判定不到），加标签时看 Console。
 
 ## 逻辑时钟与单位
@@ -22,9 +24,9 @@
 - `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
 - Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
-- 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动→同轨推挤）。改成别处调用的顺序就要重新想一遍谁先谁后。
+- 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤）。采样那一拍是静态入口 `CharacterObj.SampleOverlaps`，不是组件回调。改成别处调用的顺序就要重新想一遍谁先谁后。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
-- 改动窗口语义、动作时钟或顿挫，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
+- 改动窗口语义、动作时钟、顿挫或命中采样，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上、第几帧打到"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
 
 ## 分类索引
 

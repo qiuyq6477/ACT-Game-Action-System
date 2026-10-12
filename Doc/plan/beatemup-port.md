@@ -74,7 +74,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | C | 没有"动作在什么状态下才允许"的门禁 | 新增 `Methods/CancelConditionMethod.cs` 函数表，内置 `StateIs`（地面/空中）与 `NearbyUnitInAction`（倒地追击用） | 与已有三张表 `RootMotionMethod`/`ForceMoveMethod`/`PickActionMethod` 同构，不开新概念；`NearbyUnitInAction` 走常驻注册表，不许 `FindGameObjectsWithTag` |
 | D | 跨单位位置绑定（抓取） | `CharacterObj.SetHoldConstraint(victim, offset)` / `ReleaseHold()`，在 `TickAll` 移动拍之后统一应用 | BeatEmUp 是**一次性传送、之后不跟随**（`PlayerGrabEnemy.cs:17` → `EnemyGrabbed.cs:28`），它自己的 README 就列为缺陷，移植要做对 |
 | E | 没有长按语义 | 把 `Block` 当**方向键**登记（每 tick 都记、不吃 `NonDirectionInputCooldownFrames` 节流、不被换动作清理），长按 = `IsKeyHeld(Block)`，松手 = 该帧无记录 | `InputToCommand.cs:76-79` 自己承认没做 tap/hold 是偷懒；改动局限在采样与注册，判定层不动 |
-| F | 命中相交的粒度是物理步而不是逻辑帧 | 删掉 `AttackHitBox.cs:81-98` 的 `OnTriggerEnter/Exit`，在 `TickAll` 的 `TickBoxes` 之后、`DealWithAttacks` 之前插 `SampleOverlaps()`：每逻辑帧 `Physics.SyncTransforms()` + 按形状 `OverlapSphere/Capsule/BoxNonAlloc` 到 Awake 预分配的常驻缓冲 | 结掉 `Doc/issue/hit-overlap-physics-step-granularity.md`。角色根节点是直写 `transform.position`，而 `m_AutoSyncTransforms: 0`，所以必须先同步；`queriesHitTriggers` 默认为真，触发盒照样被查得到 |
+| F | 命中相交的粒度是物理步而不是逻辑帧 | 删掉 `AttackHitBox` 的 `OnTriggerEnter/Exit`，在 `TickAll` 的 `TickBoxes` 之后、`DealWithAttacks` 之前插 `SampleOverlaps()`：每逻辑帧 `Physics.SyncTransforms()` + 按形状 `OverlapSphere/Capsule/BoxNonAlloc` 到 Awake 预分配的常驻缓冲 | ✅ 已由切片 1.3 结掉（原 `Doc/issue/hit-overlap-physics-step-granularity.md` 已删，顺带登记 `Doc/issue/hit-event-heap-alloc.md`）。角色根节点是直写 `transform.position`，而 `m_AutoSyncTransforms: 0`，所以必须先同步；`queriesHitTriggers` 默认为真，触发盒照样被查得到 |
 
 另外顺带落地 `refactor.md` 里 **Phase 3**（伤害/霸体/粗筛）与 **Phase 4**（实体与对象池，Step 2）：伤害公式要的 `AttackHitBox.damageRate`（`AttackHitBox.cs:36`）与 `BeHitBox.meat`（`BeHitBox.cs:28`，MH 式部位肉质）**两个字段早就存在但从来没被消费**，只差 `GameMain.cs:221` 那行 `//造成伤害 //todo demo里就先不做了`。
 
@@ -106,7 +106,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | :--- | :--- | :--- |
 | 1.1 | 面向抽象（冲突 3）+ HD-2D 世界约定：精灵贴到 3D 平面、纵深排序按 Z、透视相机按 PPU 50 标定 | 灰盒肉眼朝向正确、跳起来不穿背景；`Assets/Editor/ActionFrameClockTests.cs` 九个原用例全绿 |
 | 1.2 | 轴改名 + 纵深车道：`NatureMove` 加 Z、竖轴改纵深、`GoStraight` 加可选 `param[3]`、同轨 pairwise 推挤、新建 `LevelBounds` | 新用例：`Inversed=true` 时纵深位移符号不变；13 条旧表项逐 tick 位移不变（原用例⑦须原样绿）；`NatureMove` 分区 0 B |
-| 1.3 | 命中改逻辑帧采样（F）+ 阵营 layer + 距离²粗筛 | **先写用例再改实现**：窄窗口 `[4,5]` 恰好命中一次且不重复；Profiler 量 `SyncTransforms` + 每盒一次 overlap 的 CPU；删掉 issue 文件与索引行 |
+| 1.3 ✅ | 命中改逻辑帧采样（F）+ `BeHitBox` layer（阵营层与距离²粗筛都记为偏离，见第八节） | **先写用例再改实现**：命中帧恰好等于表里 `[4,5]` 被跨过的帧、走开当帧立刻打不着、自己的盒子不算靶子、离开采样层查不到、每帧 0.5 米穿过不漏拍；`SampleOverlaps` 分区稳态 0 B；issue 文件与索引行已删 |
 | 1.4 | 导出工具 `Assets/Editor/Tools/ACT/AnimClipToActionTable.cs`，把 17 条攻击 clip 的窗口/盒子轨迹/cue 转成表 | 工具报告零可疑值；逐招与 BeatEmUp 对拍命中帧集合与画面位置；`Tools/ACT/打印动作时长` 全 ✓ |
 | 1.5 | 盒子轨迹（A）+ 帧事件表（B）+ 池化的 cue 派发 | cue 触发路径 GcProbe 新分区 0 B/帧 |
 | 1.6 | `CancelConditionMethod` 表（C）+ 长按（E）+ 种子化随机 | 用例：空中不接地面招；倒地追击只在目标处于 `KnockdownGrounded` 时成立；同种子同帧率逐 tick 一致 |
@@ -157,6 +157,28 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 - 三段不能共用一个 rig：输入历史保留 72 个逻辑帧，中途换正反手后上一段按过的键还会参与指令匹配，把下一段的期望值污染掉（实测少走两拍）。所以拆成三个独立用例。
 
 Play Mode 稳态（约 30 秒、三个窗口）八个分区全部 `avg=0 max=0`，含新增的 `LaneSeparate`（n=172），自检 1056B 证明计数器是活的。启动那两个窗口里的非零都是常驻 List 的头几次扩容（`max=1056` 正好是 64 个 16 字节的 `KeyInputRecord` 加对象头）。
+
+### 切片 1.3 命中按逻辑帧采样 · 已实施 · 2026-10
+
+`AttackHitBox` 的 `OnTriggerEnter/OnTriggerExit` 删掉，换成 `TickAll` 里新的一拍：`CharacterObj.SampleOverlaps(all, buffer)` 每逻辑帧先 `Physics.SyncTransforms()` 一次（角色根节点是直写 `transform.position` 的，而 `m_AutoSyncTransforms: 0`，不同步就查到的是上一个物理步的旧位置），清空每个人的接触列表，再让**开启中的攻击盒**按形状分派 `OverlapSphere/Box/CapsuleNonAlloc`。`Tick()`（盒子开关）一字未动。
+
+落在采样拍而不是别处的理由：盒子刚被刷新过，查到的就是"这一拍开着的那些盒"；而它读的位置仍来自上一拍的 `Move()`，这个滞后和以前物理回调读到的一样——换时基不该顺手改掉命中的早晚，那是另一件事。
+
+三处与原方案的有意偏离：
+
+- **没做距离²粗筛**。PhysX 的查询自带 broadphase，自己再算一遍 sqrt-free 的圆-圆测试只是把引擎已经做的事重做一遍；先量了再说（`GcProbe` 新增 `SampleOverlaps` 分区，稳态 `avg=0 max=0`，同屏 3 个角色每帧 4 次查询）。
+- **没加 `CampPlayer`/`CampEnemy` 两个层**。阵营在代码里还不存在（`GameMain` 是硬写的"玩家×每个敌兵"双向结算），为将来的概念先占两个层位属于投机；改成加一个 `BeHitBox` 层（`ProjectSettings/TagManager.asset` 第 8 个，`Player.prefab` 里两个受击盒已归位），先把"地面/道具/别人的攻击盒不许挤占那 64 格缓冲区"这条真正需要的过滤钉住。等 1.9 有阵营时再把掩码拆成玩家/敌兵两档，届时用例里那条"离开采样层就查不到"要跟着改。
+- **缓冲区溢出只报一次日志**（`AttackHitBox._bufferOverflowLogged`），不静默丢也不扩容。
+
+一个原本没预料到的坑，值得留给后面的切片：**EditMode 下 `Object.Instantiate` 不触发 `Awake`**（Unity 只在 Play Mode 调回调）。盒子的绑定（认主人、烘焙 tag、认领碰撞体、建接触列表）原来全长在 `Awake` 里，于是采样用例一跑就是 `NullReferenceException`。把它们抽成 `CharacterObj.BindBoxes()`（幂等，`Awake` 调它，用例也调它）。以前 15 条用例没暴露这件事，是因为它们只断言掩码和帧号，从来不碰盒子对象。
+
+顺带记下的两件事：`BeHitBox_Body`/`BeHitBox_Parry` 上那两个非 kinematic、关重力的 Rigidbody 现在**没有任何人需要了**（触发回调已删，直接查询不要 Rigidbody），但它是既有数据、删了会改变物理求值，本期只登记不动；命中那一拍的堆分配另见 `Doc/issue/hit-event-heap-alloc.md`。
+
+**验证**：`ActionFrameClockTests` 从 15 条加到 20 条全绿，新增的第 11 区五条用例是**旧实现根本写不出来**的——EditMode 不跑物理模拟，`OnTriggerEnter` 一次都不会来。用例靠"把靶子的受击盒中心压到拳盒中心、再沿 z 退开 dz"自己算期望值（胶囊轴正好穿过球心，于是重叠的充要条件就是 `|dz| ≤ 0.6`），不去回头问实现：① 命中帧恰好等于表里窗口 `[4,5]` 被跨过的帧；② 靶子走开的那一拍立刻打不着、走回来立刻打得着（清空重填）；③ 拳盒压在自己的受击盒上不算靶子（主人过滤）；④ 离开 `BeHitBox` 层就查不到（顺带验了 prefab 的层真的归位了）；⑤ 每帧 0.5 米（合 30 米/秒）沿纵深穿过拳头，重叠的三帧一帧不漏。
+
+Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，n=231），自检 1056B。端到端也验了一遍真的打到了：编辑期 eval 把敌兵摆到拳心、给玩家塞一记 Punch1，读回 `hitRec=1 enemyAct=HurtFromForward enemyHitStop=True`，击退正好走了表里的 0.1 米。
+
+`Doc/issue/hit-overlap-physics-step-granularity.md` 随本切片删除。
 
 ### 顺带：恢复闸门
 

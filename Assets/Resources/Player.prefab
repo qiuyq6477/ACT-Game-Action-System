@@ -360,7 +360,7 @@ GameObject:
   - component: {fileID: 7312143387673562628}
   - component: {fileID: 7977951913572537530}
   - component: {fileID: 4174231911665078745}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: BeHitBox_Body
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -564,7 +564,7 @@ GameObject:
   - component: {fileID: 3596119740742134280}
   - component: {fileID: 4803500203585823543}
   - component: {fileID: 4542144083248490041}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: BeHitBox_Parry
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1433,6 +1433,8 @@ MonoBehaviour:
   groundProbeRadius: 0.3
   groundSnapTolerance: 0.02
   moveSpeed: 4
+  depthSpeedRate: 0.8
+  laneRadius: 0.3
 --- !u!114 &5251258270997115436
 MonoBehaviour:
   m_ObjectHideFlags: 0

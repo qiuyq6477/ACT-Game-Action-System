@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -11,6 +12,60 @@ using UnityEngine;
 /// </summary>
 public class BeHitBox : MonoBehaviour
 {
+    /// <summary>
+    /// 受击盒专用层。命中采样只查这一层：地面、道具、别的攻击盒因此天然被排除，
+    /// 也不会被场景里那些大碰撞体撑满查询缓冲区。层不存在时 EnsureQueryMask 会喊一声
+    /// </summary>
+    private const string BeHitLayerName = "BeHitBox";
+
+    /// <summary>
+    /// 相交采样用的层掩码，`CharacterObj.BindBoxes` 里解析（那里是第一次摸到盒子的地方，
+    /// 编辑期用例也走这条路，所以不依赖 GameMain 的 Awake）
+    /// </summary>
+    public static int QueryMask { get; private set; }
+
+    /// <summary>
+    /// collider → 受击盒。查询返回的是 Collider，要拿回组件只能查这张表：
+    /// GetComponent 的分配行为随 Unity 版本变，而 Dictionary 查引用键是确定不分配的
+    /// </summary>
+    private static readonly Dictionary<Collider, BeHitBox> _byCollider = new Dictionary<Collider, BeHitBox>();
+
+    private static bool _maskResolved;
+
+    public static void EnsureQueryMask()
+    {
+        if (_maskResolved) return;
+        _maskResolved = true;
+        int layer = LayerMask.NameToLayer(BeHitLayerName);
+        if (layer < 0)
+            Debug.LogError("工程里没有 " + BeHitLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
+                           "并把所有受击盒归到这一层，否则命中采样什么都查不到");
+        else
+            QueryMask = 1 << layer;
+    }
+
+    /// <summary>
+    /// 由 CharacterObj.BindBoxes 顺带调用（那里本来就要遍历子组件认主人）
+    /// </summary>
+    public void RegisterCollider(Collider col)
+    {
+        if (!col) return;
+        _byCollider[col] = this;
+    }
+
+    public static bool TryGet(Collider col, out BeHitBox box)
+    {
+        return _byCollider.TryGetValue(col, out box);
+    }
+
+    private void OnDestroy()
+    {
+        //角色被销毁（Phase 4 的对象池会反复走这条路）时要把自己从表里摘掉，
+        //否则残留的 destroyed 键会让查表命中一个空壳
+        foreach (var kv in _byCollider)
+            if (kv.Value == this) { _byCollider.Remove(kv.Key); break; }
+    }
+
     /// <summary>
     /// 标签，可以被当做一种分类方式
     /// 比如我们开启一些受击盒的时候可以byTag，只要tags里面有指定的tag就算是符合条件了。
@@ -58,7 +113,7 @@ public class BeHitBox : MonoBehaviour
 
     /// <summary>
     /// 把Inspector上填的tags翻译成位掩码。
-    /// 由CharacterObj.Awake顺带调用（那里本来就要遍历子组件认主人），
+    /// 由CharacterObj.BindBoxes顺带调用（那里本来就要遍历子组件认主人），
     /// 一定要在任何Update之前完成，否则盒子会以为自己的标签谁都不是
     /// </summary>
     public void BakeTagMask()

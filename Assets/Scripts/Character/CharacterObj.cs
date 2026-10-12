@@ -65,7 +65,11 @@ public class CharacterObj : MonoBehaviour
     private float _curWeight = 0;
 
     /// <summary>
-    /// 碰撞盒的碰撞信息，现在这里缓存一下
+    /// 攻击框 → 这一逻辑帧查到的受击框。
+    /// 【每拍清空重填，不是增量维护】：以前的OnTriggerEnter/Exit是增量语义，物理步与逻辑帧错频时
+    /// Exit可能永远不来，一条已经解除的接触就脏在表里了。清空重填让"这一拍打到谁"
+    /// 完全等于"这一拍查询的结果"。
+    /// 【列表在Awake里一次性建齐，运行期只Clear】：Clear保留容量，所以跑热之后一帧都不分配
     /// </summary>
     private Dictionary<AttackHitBox, List<BeHitBox>> _boxTouches = new Dictionary<AttackHitBox, List<BeHitBox>>();
     
@@ -157,8 +161,29 @@ public class CharacterObj : MonoBehaviour
             //更换动作时去掉所有命中记录
             HitRecords.Clear();
         }));
-        
-        //开始的时候初始化一下必要的Components
+
+        BindBoxes();
+
+        //这一层不存在的话探测永远落空，角色会一路往下掉，而这种错法本来没有任何报错，所以这里必须喊一声
+        int groundLayer = LayerMask.NameToLayer(GroundLayerName);
+        if (groundLayer < 0)
+            Debug.LogError("工程里没有 " + GroundLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
+                           "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
+        else
+            _groundMask = 1 << groundLayer;
+    }
+
+    /// <summary>
+    /// 认下身上的判定盒：谁是主人、tag的位掩码、各自的碰撞体，以及每拍重填的接触列表。
+    /// 【为什么单独成一个公开方法而不是留在Awake里】：EditMode下 Instantiate 不触发 Awake
+    /// （Unity只在Play Mode里调回调），而相交采样的用例必须在编辑态把这套东西立起来
+    /// ——见 Assets/Editor/ActionFrameClockTests 的第11区。幂等，Awake和用例都能调
+    /// </summary>
+    public void BindBoxes()
+    {
+        if (AttackBoxes != null) return;
+
+        BeHitBox.EnsureQueryMask();
         List<AttackHitBox> attackBoxes = new List<AttackHitBox>();
         List<BeHitBox> beHitBoxes = new List<BeHitBox>();
         Transform[] transforms = GetComponentsInChildren<Transform>();
@@ -168,8 +193,12 @@ public class CharacterObj : MonoBehaviour
             if (ahb)
             {
                 ahb.master = this;
-                //顺便把Inspector上的tag换成位掩码，Awake一定早于所有Update，判定不会踩到没烘焙的盒子
+                //顺便把Inspector上的tag换成位掩码，绑定一定早于所有Tick，判定不会踩到没烘焙的盒子
                 ahb.BakeTagMask();
+                //命中采样要按形状查，把碰撞体一起认下来，免得运行期再GetComponent
+                ahb.BindCollider(trans.GetComponent<Collider>());
+                //接触列表在这里建齐，运行期只Clear不Add键，这是热点路径0分配的前提
+                _boxTouches.Add(ahb, new List<BeHitBox>());
                 attackBoxes.Add(ahb);
             }
             BeHitBox bhb = trans.GetComponent<BeHitBox>();
@@ -177,6 +206,11 @@ public class CharacterObj : MonoBehaviour
             {
                 bhb.master = this;
                 bhb.BakeTagMask();
+                Collider col = trans.GetComponent<Collider>();
+                bhb.RegisterCollider(col);
+                //受击盒必须由物理碰撞体撑着：查询返回的是Collider，没有碰撞体的盒子在这套采样里等于不存在。
+                //只配了tag没配碰撞体是配表事故，而它的表现是"这一拳莫名其妙打不着"，所以这里要当场喊
+                if (!col) Debug.LogError(name + " 的受击盒 " + bhb.name + " 身上没有碰撞体，命中采样查不到它");
                 beHitBoxes.Add(bhb);
             }
         }
@@ -184,14 +218,6 @@ public class CharacterObj : MonoBehaviour
         //盒子由GameMain的时钟按固定顺序刷新，所以这里要把两组盒子留在身上，免得每帧再遍历一次子节点
         AttackBoxes = attackBoxes.ToArray();
         BeHitBoxes = beHitBoxes.ToArray();
-
-        //这一层不存在的话探测永远落空，角色会一路往下掉，而这种错法本来没有任何报错，所以这里必须喊一声
-        int groundLayer = LayerMask.NameToLayer(GroundLayerName);
-        if (groundLayer < 0)
-            Debug.LogError("工程里没有 " + GroundLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
-                           "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
-        else
-            _groundMask = 1 << groundLayer;
     }
 
     /// <summary>
@@ -373,23 +399,36 @@ public class CharacterObj : MonoBehaviour
     /// <param name="targetBox">受击框</param>
     public void OnAttackBoxHit(AttackHitBox attackHitBox, BeHitBox targetBox)
     {
-        if (!_boxTouches.ContainsKey(attackHitBox))
-            _boxTouches.Add(attackHitBox, new List<BeHitBox>());
-        
-        if (!_boxTouches[attackHitBox].Contains(targetBox))
-            _boxTouches[attackHitBox].Add(targetBox);
+        //键在Awake里已经建齐了，这里只有查表和Add，一次分配都没有
+        if (!_boxTouches.TryGetValue(attackHitBox, out List<BeHitBox> list)) return;
+        if (!list.Contains(targetBox)) list.Add(targetBox);
     }
 
     /// <summary>
-    /// 当攻击框脱离了受击框
+    /// 每逻辑帧一次的相交采样：把角色的位移同步进物理场景，清空上一拍的接触，
+    /// 再让每个开启中的攻击盒自己去查一遍受击盒。
+    /// 【为什么放在TickBoxes之后、命中结算之前】：盒子的Active刚被刷新，查出来的就是"这一拍开着的那些盒"；
+    /// 【为什么在移动拍之前】：位置来自上一拍的Move()，和以前物理回调读到的滞后量一致，
+    /// 换时基不该顺手改掉命中早晚，那是另一件事
     /// </summary>
-    /// <param name="attackHitBox"></param>
-    /// <param name="beHitBox"></param>
-    /// <returns></returns>
-    public void OnAttackBoxExit(AttackHitBox attackHitBox, BeHitBox beHitBox)
+    /// <param name="all">场上全部角色</param>
+    /// <param name="buffer">常驻缓冲区，所有角色共用一个就够：一次查询只涉及一个攻击盒</param>
+    public static void SampleOverlaps(CharacterObj[] all, Collider[] buffer)
     {
-        if (!_boxTouches.ContainsKey(attackHitBox)) return;
-        _boxTouches[attackHitBox].Remove(beHitBox);
+        long gcProbe = GcProbe.Begin(GcProbe.Region.SampleOverlaps);
+        //角色是直写transform.position的，而工程里m_AutoSyncTransforms=0，
+        //不手动同步的话查询看到的还是上一个物理步留下的旧位置，快位移照样会穿盒
+        Physics.SyncTransforms();
+
+        for (int i = 0; i < all.Length; i++)
+        {
+            CharacterObj c = all[i];
+            if (!c) continue;
+            foreach (KeyValuePair<AttackHitBox, List<BeHitBox>> touch in c._boxTouches)
+                touch.Value.Clear();
+            for (int b = 0; b < c.AttackBoxes.Length; b++) c.AttackBoxes[b].SampleTouches(buffer);
+        }
+        GcProbe.End(GcProbe.Region.SampleOverlaps, gcProbe);
     }
 
     private BeHitBoxTurnOnInfo GetDefensePhaseByBeHitBox(BeHitBox box)
@@ -398,7 +437,7 @@ public class CharacterObj : MonoBehaviour
         //原来是拿盒子的tag当外层去比，只有当一个盒子带多个tag、而这些tag又被不同阶段开启时
         //两者才会挑到不同的阶段，而那种配表本来就被声明为"听天由命"（见ActionInfo的defensePhase注释）
         //【阶段一定要从盒子主人身上取】盒子属于挨打的一方，而调用本函数的this是打人的一方；
-        //攻击盒的OnTriggerEnter从来不会把主人自己的受击盒记进_boxTouches，所以读this那份列表永远不可能读到开启这个盒子的阶段
+        //采样只会把"别人的受击盒"记进自己的表（bhb.master != master那条），所以读this那份列表永远不可能读到开启这个盒子的阶段
         foreach (BeHitBoxTurnOnInfo info in box.master.action.ActiveBeHitBoxInfo)
         {
             if ((info.tagMask & box.TagMask) != 0)
