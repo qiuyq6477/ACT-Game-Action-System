@@ -21,6 +21,62 @@ public static class CombatPipeline
     public const string DeathCatalog = "Death";
 
     /// <summary>
+    /// 本逻辑帧谁打到了谁。整段从 `GameMain.DealWithAttacks` 搬进来，理由与 `ResolveHit` 一样：
+    /// 用例要打真入口，而不是在生产代码之外照抄一份配对逻辑（抄漏一条分支，那条分支就没被钉住过）。
+    /// 【两条常规 + 一条同侧】：常规那两条的结构是"玩家↔敌兵"，阵营隐含在循环形状里；
+    /// 同侧那一条是给被当成武器摔出去的那具身体用的（`AttackInfo.hitOwnSideOnly`），
+    /// 它只对"此刻真开着那一记"的人做二次方循环，所以场上二十几个敌兵也不会变成几百次查询
+    /// </summary>
+    /// <param name="all">场上全部角色，第 0 个是玩家自己（`GameMain._all` 的约定）</param>
+    /// <param name="player">玩家</param>
+    public static void DealWithAttacks(System.Collections.Generic.IReadOnlyList<CharacterObj> all,
+                                       CharacterObj player)
+    {
+        for (int index = 1; index < all.Count; index++)
+        {
+            CharacterObj ene = all[index];
+            if (!ene) continue;
+
+            //玩家对敌人（只打自己人的那一记不属于这一条）
+            if (player.CanAttackTargetNow(ene, out AttackInfo pAttackPhase, out BeHitBoxTurnOnInfo eDefenseInfo,
+                    out AttackHitBox pAttackBox, out BeHitBox eneBox)
+                && !pAttackPhase.hitOwnSideOnly
+                && player.CanHitTargetAgain(ene, pAttackPhase.phase))
+            {
+                ResolveHit(player, ene, in pAttackPhase, in eDefenseInfo, pAttackBox, eneBox);
+            }
+
+            //敌人对玩家
+            if (ene.CanAttackTargetNow(player, out AttackInfo eAttackPhase, out BeHitBoxTurnOnInfo pDefenseInfo,
+                    out AttackHitBox eAttackBox, out BeHitBox playerBox)
+                && !eAttackPhase.hitOwnSideOnly
+                && ene.CanHitTargetAgain(player, eAttackPhase.phase))
+            {
+                ResolveHit(ene, player, in eAttackPhase, in pDefenseInfo, eAttackBox, playerBox);
+            }
+        }
+
+        for (int a = 1; a < all.Count; a++)
+        {
+            CharacterObj body = all[a];
+            if (!body || !body.HasOwnSideAttackOpen()) continue;
+            for (int b = 1; b < all.Count; b++)
+            {
+                CharacterObj mate = all[b];
+                //玩家不参与这一条：飞出去的身体砸的是他的同边人（源工程那条判定的目标就是"攻击者的敌人"，
+                //而摔他的那一记属于玩家）。自己不跟自己碰——采样那一拍已经把盒子主人自己的受击盒排除了
+                if (!mate || ReferenceEquals(mate, body) || ReferenceEquals(mate, player)) continue;
+                if (!body.CanAttackTargetNow(mate, out AttackInfo attack, out BeHitBoxTurnOnInfo defense,
+                        out AttackHitBox bodyBox, out BeHitBox mateBox)) continue;
+                //冒泡挑出来的那一记必须是"只打自己人"的：一个人同时开着两记时，打对面的那一记归上面两条
+                if (!attack.hitOwnSideOnly) continue;
+                if (!body.CanHitTargetAgain(mate, attack.phase)) continue;
+                ResolveHit(body, mate, in attack, in defense, bodyBox, mateBox);
+            }
+        }
+    }
+
+    /// <summary>
     /// 死亡预约的优先级。表上的 priority 目前最大是 30，取一个够压倒、又加上被选那行的 priority
     /// 之后不会溢出的数（PreorderActionByActionChangeInfo 里两者要相加）
     /// </summary>

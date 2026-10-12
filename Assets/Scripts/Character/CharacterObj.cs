@@ -645,6 +645,24 @@ public class CharacterObj : MonoBehaviour
     }
 
     /// <summary>
+    /// 这一拍有没有"只打自己人"的攻击开着 —— 也就是这具身体此刻正被当成武器摔着。
+    /// 【为什么要单独问一句】：`GameMain.DealWithAttacks` 的常规两条循环只配"玩家↔敌兵"，
+    /// 同边的人互相不打。多一种"打自己人"的攻击不能每次都把全场两两配一遍（二十几个敌兵就是几百次查询），
+    /// 所以先用这一个便宜的判断（只走当前动作那几条开着的攻击阶段）把参与者筛出来
+    /// </summary>
+    public bool HasOwnSideAttackOpen()
+    {
+        AttackInfo[] attacks = action.CurrentAction.attacks;
+        if (attacks == null) return false;
+        foreach (AttackBoxTurnOnInfo info in action.ActiveAttackBoxInfo)
+        {
+            int idx = action.IndexOfAttack(info.attackPhase);
+            if (idx >= 0 && attacks[idx].hitOwnSideOnly) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 现在是否能殴打某个人，这里不判断HitRecord
     /// </summary>
     /// <param name="target">谁挨打？</param>

@@ -16,7 +16,7 @@ public struct AttackInfo
     /// 伤害值，这不一定是一个最终值，他可以是一个倍率，看AttackInfo用在哪儿
     /// 比如用在动作游戏中，就相当于mh的伤害倍率，很好理解，动作游戏都有这个
     /// 精致一些的话会做在每一帧，但既然用了Unity和UE要尊重他们的框架就只能………
-    /// 按动作问题也不大，毕竟“玩家好理解”。
+    /// 按动作问题也不大，毕竟"玩家好理解"。
     /// </summary>
     public float attack;
 
@@ -89,7 +89,7 @@ public struct AttackInfo
 
     /// <summary>
     /// 当命中的时候，自身会发生的变化
-    /// 这里值得注意的是，这未必是动作的属性，我在这里只是做的“粗糙”了
+    /// 这里值得注意的是，这未必是动作的属性，我在这里只是做的"粗糙"了
     /// 精细一点的应该是不同帧不同的攻击框都有不同的值
     /// </summary>
     public ActionChangeInfo selfActionChange;
@@ -98,6 +98,15 @@ public struct AttackInfo
     /// 命中时候对手的动作变化
     /// </summary>
     public ActionChangeInfo targetActionChange;
+
+    /// <summary>
+    /// 这一记只打"和自己同一边的人"。false（默认）= 只打对面，也就是本工程一直以来的行为。
+    /// 【为什么需要它】：源工程的 hitOtherEnemiesWhenThrown 让被摔出去的那具身体砸到自己队友，
+    /// 而这里的命中判定是"玩家↔敌兵"两条循环走出来的，同边的人本来互相查不到。
+    /// true 的那一记会被那两条常规循环跳过，只由 `GameMain.DealWithAttacks` 末尾的同侧相碰认领——
+    /// 于是飞出去的人既砸得着队友，也不会把摔他的玩家砸了
+    /// </summary>
+    public bool hitOwnSideOnly;
     
     /// <summary>
     /// 如果攻击命中了，就会临时开启一些tempBeCancelledTag，这里用id去索引

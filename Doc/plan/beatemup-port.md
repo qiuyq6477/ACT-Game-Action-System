@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1–2.4 · 2026-10；剩输入层、弹射物与道具、视差背景、敌兵精灵）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1–2.5 · 2026-10；剩输入层、弹射物与道具、视差背景、关卡流程闭环、敌兵精灵）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -378,6 +378,19 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **验证**：EditMode 76/76 全绿（第22区五条：闪按拍数走完自己清干净、组件在绑定时就备好而命中那拍不再 `AddComponent`、数字来自预烤表且 0 伤害不冒字、字在 `LifeFrames` 里往上飘然后收回、超出容量回头复用而不加长池子、以及**打真入口** `ResolveHit` 掉血那一记同时点亮闪与飘字而格挡那一记两个都不出现）。批处理 Play 探针：安静窗口 `PoolTick avg=0 max=0`、`EnemyThink avg=0 max=0`，其余分区除 `SampleOverlaps max=108` 外全 0；换波 + 打死那一段才有 `EnemyThink max=2592`（新生成的人身上冷结构长起来那一次）与 `ChangeByCatalog avg=316`（`CrossFade` 在引擎内部），两条都有解释。
 
 **偏离**：格挡没有做火花/弹刀特效（源工程有 `DefendEffect`），它需要的是一张"命中但没掉血"的 cue，归 cue 表那边一起加；受击白闪对 3D 灰盒与精灵是同一条路径，但灰盒的 shader 半透不支持乘色时只会不明显，不会报错。
+
+### 切片 2.5 敌兵回防与"摔出去的身体" · 已实施 · 2026-10
+
+解决的问题：2.2 让敌兵会走位会出手，可他挨打只有一种反应——站着挨；1.8 把人摔出去之后，那具飞出去的身体什么都不是，只是"一段位移 + 一行倒下"。这两件事在源工程里是同一个组件上的两个开关（`UnitSettings.defendChance` / `hitOtherEnemiesWhenThrown`），一起补完。
+
+- **同侧相碰逼出了"阵营"这件事**：命中配对的结构是"玩家 ↔ 每一个敌兵"两条循环，**阵营隐含在循环形状里**，所以"打自己人"这种需求光有数据表达不出来。落下来的形状是 `AttackInfo.hitOwnSideOnly`（缺省 false = 老行为，一记都不改变）+ 配对整段搬进静态真入口 `CombatPipeline.DealWithAttacks(all, player)`（搬的理由与 1.9 同一条：用例要打真入口，不许在测试里照抄一份配对），末尾多一条二次方循环，但它只对 `CharacterObj.HasOwnSideAttackOpen()` 为真的人展开——常态下每人一拍只多几句整数判断，二十几个敌兵也不会变成几百次 overlap。
+- **"被摔"与"被打退"分成两行动作，而不是运行期记一个状态**：源工程那两个开关一个默认开（thrown）一个默认关（falling），而本工程两者走的都是 `ChangeByCatalog("Beaten")` 挑出来的那一家——如果 `Beaten` 那一行自带身体盒，那么每一记把对面打进 `Beaten` 的攻击（`PlayerPunch3`/`PlayerKick2` 都算）都会顺手砸队友。所以 `PlayerThrow` 的 `targetActionChange` 改成 `ChangeToActionId("EnemyThrown")`，新行 `EnemyThrown` 才是那把武器。**倒排索引那边安全**：`EnemyThrown` 的 catalog 仍是 `Beaten`，而 `PickActionMethod` 按 id 精确认正反手，认不出时落 `candidates[0]`，那一个是表里更靠前的 `BeatenFromForward`，所以被砸到的队友不会被再路由成第二具身体（不产生连锁）。
+- **身体盒借的是四肢**：`EnemyThrown` 一记开四只盒（`RightPunch/LeftPunch/RightKick/LeftKick`），因为灰盒身上没有罩躯干的盒，而那四只球合起来就是他这一拍的体积。等敌兵换成精灵美术（第六节前置事项里那条缺 `.meta`），这一行该配一只真正的身体盒 + `track`。
+- **回防仍然只登记按键**：新行 `EnemyDefend`（`defensePhase.block = true`，动画借 `BoxingStand`，长按语义 + `keepPlayingAnim` 让他站着挡而不是每 41 拍重放一次），`EnemyMind` 在"玩家进入攻击分类"的那一拍抽一次 `Dice.Chance(defendChance)`，抽中就替他按满 `defendHoldFrames` 拍 `KeyMap.Block`——挡不挡、免多少、罚几拍、推开多远全在表里判，与玩家自己按住格挡是同一条路，AI 里一个数值判定都没写。与源工程两处不同：① 源工程在 `IsDefending` 里"挨打那一拍"抽，而本工程的格挡是一行**动作**，要下一拍才生效，所以抽在起手那一刻（真要在结算里抽，就得把随机塞进 `CombatPipeline`）；② 每记只抽一次而不是每拍都抽——每拍抽会把 30% 摊成"几乎必挡"，那个数就不再是 defendChance。`defendChance` 源工程默认 0（只有配了的兵才挡），这里给 30，因为本工程的敌兵目前就是那一只灰盒。
+
+**验证**：EditMode **84/84 全绿**（第23区八条：身体砸到队友掉的是那一记全额血且**只砸一次**（打的是真入口 `DealWithAttacks`，三人场）、飞出去的人不砸摔他的玩家、普通那一记（没写 flag）一个队友都不许碰、`PlayerThrow` 按 id 指名的那一行在每个会被波次表生成的 prefab 子集里都查得到（数据耦合的闸门）、`EnemyDefend` 的挡用的是攻击方表上的 `blockStunFrames`/`blockPush`、看见起手下一拍才按（AI 拍在动作拍之前）、抽一次不重抽且换一记重抽、概率 0 或够不着就根本不按）。批处理 Play 探针（803 逻辑帧）：安静窗口十七个分区里除既有的 `SampleOverlaps max=108` 之外全 `avg=0 max=0`，`CanAttackTargetNow n=1200 avg=0`（每人一拍多问一次那句 `HasOwnSideAttackOpen`，没有分配），无异常无负缩放告警。
+
+**偏离与顺延**：`EnemyMind` 的挡是**预判**（看见起手就挡），源工程是**反应**（挨打那一拍抽）——差别在"挡得下那一记的前提是他已经站进防御姿势"，本工程需要一到拍的余量，源工程不需要。源工程 `defendDuration` 里敌人是"站着不动只挡"，这里照做（举盾那几拍连走位都不登记）。`hitOtherEnemiesWhenFalling` 明确没做（源工程默认关）：如果被拳脚打退的人也能砸队友，连招就变成不可读的连锁伤害。
 
 ### 顺带：恢复闸门
 

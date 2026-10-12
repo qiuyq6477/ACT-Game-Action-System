@@ -3880,8 +3880,8 @@
                         "transFrames": 0
                     },
                     "targetActionChange": {
-                        "changeType": 2,
-                        "param": "Beaten",
+                        "changeType": 1,
+                        "param": "EnemyThrown",
                         "priority": 5,
                         "fromFrame": 0,
                         "transFrames": 0
@@ -4027,6 +4027,200 @@
                 "animKey 用 BoxingStand：这两只敌兵是 3D 灰盒，而源工程的 EnemyGrabbed 是一张精灵的 1 帧片子，它属于 BeatEmUp 那套素材（Step 2 敌兵换成精灵之后走的才是那条）。durationFrames 180 与 holdFrames 同一件事的两头：举人者和被举者约好一起结束，谁先到都把另一头带走（前者靠 keepHold，后者靠被举者换动作）"
             ],
             "priority": 10
+        },
+        {
+            "id": "EnemyDefend",
+            "durationFrames": 41,
+            "animKey": "BoxingStand",
+            "catalog": "Stand",
+            "priority": 10,
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 41
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 2
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        102
+                    ],
+                    "validInFrames": 1
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "BoxingStand",
+            "keepPlayingAnim": true,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 41
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "block": true
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "敌兵那一家的格挡行，形状照 PlayerDefend，只是动画借站立那一条：demo 这只灰盒没有专门的防御姿势，而源工程的敌兵贴图在这份副本里缺 .meta",
+                "那个格挡键不是玩家按的，是 EnemyMind 的 defendChance 抽中之后替他按满 defendHoldFrames 拍。键还是同一个 KeyMap.Block，所以挡不挡得住全在表里判，跟玩家那一头一字不差",
+                "block=true 挂在受击阶段上；免多少血、挡住罚几拍（blockStunFrames）、推开多远（blockPush）那三个数都在攻击那一方的表上"
+            ]
+        },
+        {
+            "id": "EnemyThrown",
+            "durationFrames": 45,
+            "animKey": "BeatenFromFront",
+            "catalog": "Beaten",
+            "priority": 11,
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "BoxingStand",
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 1,
+                            "max": 45
+                        }
+                    ],
+                    "tag": [
+                        "RightPunch",
+                        "LeftPunch",
+                        "RightKick",
+                        "LeftKick"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0
+                }
+            ],
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "poiseDamage": 20,
+                    "hitStunFrames": 8,
+                    "blockStunFrames": 0,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": "Slowly"
+                    },
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 1.2,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 16,
+                        "tweenMethod": "Slowly"
+                    },
+                    "freezeFrames": 0,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "holdFrames": 0,
+                    "holdOffset": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "hitOwnSideOnly": true,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 30,
+                            "max": 45
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 5
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "被摔出去的那具身体。源工程把它做成一个开关（UnitSettings.hitOtherEnemiesWhenThrown，默认开着）：飞出去的人在滞空那几拍拿摔他的那一记砸到自己队友",
+                "本工程把它做成一行动作，由 PlayerThrow 的 targetActionChange 按 id 指名。为什么不让普通击退也走这一行：源工程里 hitOtherEnemiesWhenFalling 默认是关的，被拳脚打退的人不该顺手砸队友，所以区分「被摔」与「被打退」的必须是走的那一行，而不是运行期再记一个状态",
+                "attackPhase 一次开四只盒子（两只拳头两只脚）：灰盒身上没有专门的『身体盒』，四肢那四个球合起来就是他这一拍的体积。等敌兵换成精灵美术，这一行该配一只真正罩住躯干的盒子",
+                "hitOwnSideOnly=true 是这一记只砸自己人的那把锁：玩家↔敌兵那两条常规判定会跳过它，只由 GameMain.DealWithAttacks 末尾的同侧相碰认领（所以飞出去的人不会把摔他的玩家砸了）",
+                "受击阶段第30拍才开：还在飞的那29拍打不到他，跟 BeatenFromForward 那两行同一个道理",
+                "durationFrames 45 就是摔出去那记的 pushPower.inFrames（Arc 抛物线从出手到落地）。滞空什么时候结束最终由地形说了算，那时候这一行靠 autoNextActionId 收回站立"
+            ]
         },
         {
             "id": "EnemyDeath",

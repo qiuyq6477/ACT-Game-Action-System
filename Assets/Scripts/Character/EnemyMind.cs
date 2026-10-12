@@ -73,6 +73,27 @@ public class EnemyMind : MonoBehaviour
     /// <summary>会哪几招就由这几下按键决定——抽一招出手。本工程敌兵的家底是拳两下脚两下</summary>
     public KeyMap[] attackKeys = { KeyMap.Punch, KeyMap.Punch, KeyMap.Kick, KeyMap.Kick };
 
+    [Header("回防（源工程 UnitSettings.defendChance / defendDuration）")]
+    /// <summary>
+    /// 看见玩家起手时抽中的概率（%），抽中就举盾 <see cref="defendHoldFrames"/> 拍。
+    /// 源工程这个数默认是 0（只有配了的敌兵才会挡），这里给 30 是因为本工程的敌兵就是那一只灰盒。
+    /// 【为什么是"起手时抽一次"而不是"挨打瞬间抽"】：源工程在 `IsDefending` 里抽，也就是被打的那一拍才决定，
+    /// 而本工程的格挡是表里的一行动作（受击阶段挂着 block），动作要下一拍才生效——
+    /// 抽在起手那一刻既复现了"有概率挡住"这件事，又不会让"挡住"依赖一个刚被随机出来的状态
+    /// </summary>
+    public int defendChance = 30;
+
+    /// <summary>举盾按着格挡键多少拍。源工程 defendDuration 0.5 秒 = 30 拍</summary>
+    public int defendHoldFrames = 30;
+
+    /// <summary>横向在这个距离以内才算"那一记是冲我来的"。比进攻射程宽一点：挡要提前，等走进射程再抽就晚了</summary>
+    public float defendRangeX = 1.6f;
+
+    /// <summary>
+    /// 还在举盾的那几拍。允许外面读写（调试 UI 与用例都靠这个），>0 期间这一拍只登记格挡键
+    /// </summary>
+    public int GuardLeft { get; set; }
+
     /// <summary>
     /// 已经决定出手之后还剩几拍按下键。>0 就是"正在前摇"。
     /// 与 `FramesToDecision` 一样允许外面写：调试 UI 要能"现在就让他打出去"，用例要能清掉上一段的前摇
@@ -87,6 +108,7 @@ public class EnemyMind : MonoBehaviour
 
     private bool _started;
     private KeyMap _pending = KeyMap.NoInput;
+    private bool _guardRolled;
 
     /// <summary>
     /// 每逻辑帧一拍，由 `GameMain.TickAll` 在输入拍之后、动作拍之前调用。
@@ -126,10 +148,51 @@ public class EnemyMind : MonoBehaviour
         //挨打、被打飞、倒地这些状态里不思考也不走位：他自己那份表的优先级会把他带回站立
         if (!FreeToAct()) return;
 
+        //回防：抽中之后就站进防御姿势那几拍，连走位都不做（源工程 defendDuration 内他就是站着挡）。
+        //排在走位之前、决策心跳之后，所以它不需要等到下一次心跳才反应——看见起手就要动
+        RollGuard();
+        if (GuardLeft > 0)
+        {
+            self.input.AddInput(KeyMap.Block);
+            GuardLeft--;
+            return;
+        }
+
         StepIntoPlace();
 
         if (FramesToDecision > 0) { FramesToDecision--; return; }
         Decide(attackersCommitting);
+    }
+
+    /// <summary>
+    /// 玩家这一记的起手刚刚被我看见，就抽一次格挡。
+    /// 【"这一记"是怎么认出来的】：他离开攻击分类（Punch/Kick/Skill/Grab 那几家）就把标记清掉，
+    /// 所以连打三拳是三次抽样，而同一拳的那十几拍里只抽一次——每拍都抽的话，
+    /// 一个 30% 会被十几拍叠成"几乎必挡"，那已经不是 defendChance 了
+    /// </summary>
+    private void RollGuard()
+    {
+        if (!TargetIsCommitting())
+        {
+            _guardRolled = false;
+            return;
+        }
+        if (_guardRolled) return;
+        _guardRolled = true;
+        if (defendChance > 0 && Dice.Chance(defendChance)) GuardLeft = defendHoldFrames;
+    }
+
+    /// <summary>
+    /// 玩家此刻正处在某一记攻击的那几拍里，而且那一记够得着我
+    /// </summary>
+    private bool TargetIsCommitting()
+    {
+        string catalog = target.action.CurrentAction.catalog;
+        if (catalog != "Punch" && catalog != "Kick" && catalog != "Skill" && catalog != "Grab") return false;
+
+        Vector3 s = self.transform.position;
+        Vector3 t = target.transform.position;
+        return Mathf.Abs(t.x - s.x) <= defendRangeX && Mathf.Abs(t.z - s.z) <= attackRangeZ + 0.3f;
     }
 
     /// <summary>

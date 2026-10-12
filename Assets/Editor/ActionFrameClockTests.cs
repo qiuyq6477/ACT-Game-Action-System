@@ -64,6 +64,11 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 16. 关卡边界与血量条（BeatEmUp 移植切片 2.3 后半）：相机在关卡两头都被夹住、区间内不干涉、
 ///    关卡窄于一屏（边界算反了）时退回不夹而不是把相机按死；波次表里每一只都生在边界以内；
 ///    血条按 hp 走、没挂组件是满格而不是空条、越界的数夹在 0~1、代码搭 UI 搭得出来。
+/// 17. 敌兵回防与摔出去的身体（BeatEmUp 移植切片 2.5）：被摔的那一行开的是「只打自己人」那一记，
+///     于是它砸得着同边的队友、砸不到摔他的玩家，而普通那一记（没写这个 flag）一个队友都不许碰到；
+///     摔人那一行按 id 指名的那一行，每个会被波次表生成的 prefab 都得会（数据耦合）；敌兵的格挡行
+///     走的是与玩家格挡同一套数（免伤、罚拍、推开都取自攻击方的表）；AI 看见玩家起手才抽一次格挡，
+///     抽中就替他按满 defendHoldFrames 拍，概率 0 或那一记够不着就不按。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -115,6 +120,7 @@ public class ActionFrameClockTests
         for (int i = 0; i < _waveRigs.Count; i++) if (_waveRigs[i] != null) Object.DestroyImmediate(_waveRigs[i]);
         for (int i = 0; i < _hudRoots.Count; i++) if (_hudRoots[i] != null) Object.DestroyImmediate(_hudRoots[i]);
         if (_popupGo != null) Object.DestroyImmediate(_popupGo);
+        if (_mateRig != null) Object.DestroyImmediate(_mateRig);
         _hudRoots.Clear();
         _waveRigs.Clear();
         _waveUnits.Clear();
@@ -3013,5 +3019,339 @@ public class ActionFrameClockTests
         CombatPipeline.ResolveHit(_character, _target, in attack, in blocked, _fist, _targetBody);
         Assert.AreEqual(0, _target.GetComponent<HitFlash>().FramesLeft, "挡住的一记不闪");
         Assert.AreEqual(before, p.ActiveCount, "挡住的一记也不飘字");
+    }
+
+    //================================ 第23区：敌兵回防与摔出去的身体（切片 2.5） ====================================
+    //
+    // 两件事各自都要钉：敌兵会不会挡（表里那一行 + AI 什么时候替他按那个键），
+    // 以及被摔出去的那具身体算不算一次命中（同侧相碰那条配对）。
+    // 【为什么非要编辑态钉同侧】：它只在"三个单位同时在场"时才成立，而 Play Mode 里能看见的只是
+    // "队友倒了"——说不清是身体砸的，还是玩家那一记连带砸的，更看不出飞出去的人有没有把摔他的玩家砸了。
+
+    private GameObject _mateRig;
+    private CharacterObj _mate;
+    private BeHitBox _mateBody;
+    private CharacterObj[] _trio;
+
+    /// <summary>
+    /// 三个人的场：`_rig` 当玩家，`_target` 与 `_mate` 是两只敌兵。
+    /// 【三个而不是两个】：同侧相碰需要"被摔的人"和"被砸的人"两个敌兵，而玩家必须在场——
+    /// 他既是摔人的那一个，也是那一记不该砸到的那一个。
+    /// 【两只敌兵都只拿 demo 那一家】：`BuildTarget` 给 `_target` 的是全表，全表在场时
+    /// ChangeByCatalog("Beaten") 会挑到玩家那一家的行，断言就变成在测另一件事
+    /// </summary>
+    private void BuildTrio()
+    {
+        BuildTarget();
+        string[] family = FamilyOf("EnemyThrown");
+        _target.action.SetAllActions(GameData.ActionsFor(family), "BoxingStand");
+
+        _mateRig = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath));
+        _mateRig.name = "ACT-Test-Mate";
+        _mateRig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        _mate = _mateRig.GetComponent<CharacterObj>();
+        _mate.BindBoxes();
+        _mate.action.SetAllActions(GameData.ActionsFor(family), "BoxingStand");
+
+        int hurtTag = BoxTagRegistry.MaskOf("Hurt");
+        foreach (BeHitBox b in _mate.BeHitBoxes)
+            if ((b.TagMask & hurtTag) != 0) _mateBody = b;
+        Assert.IsNotNull(_mateBody, "前提：另一只敌兵也得有 tag 为 Hurt 的受击盒");
+
+        //玩家这一头也要有动作：`CanAttackTargetNow` 要遍历 `ActiveAttackBoxInfo`，而 EditMode 里没人调
+        //`SetAllActions` 的话那个列表还是 null，第一条循环就炸在一个运行期不可能出现的状态上
+        _action.SetAllActions(GameData.ActionsFor(FamilyOf("PlayerIdle")), "PlayerIdle");
+        _trio = new[] { _character, _target, _mate };
+
+        //三个人的 prefab 是叠在同一个坐标上的（用例的宿主本来就是"随便摆"），而这里第一拍就要采样，
+        //叠着的话"队友被砸"会在摆位之前先自己发生一次。摆开，让每一次命中都只可能来自我摆的那一拍
+        float y = _character.transform.position.y;
+        _character.transform.position = new Vector3(0f, y, 0f);
+        _target.transform.position = new Vector3(1f, y, 0f);
+        _mate.transform.position = new Vector3(3f, y, 0f);
+        Physics.SyncTransforms();
+    }
+
+    /// <summary>
+    /// 走满一拍（三个人），并把这一拍的配对与结算交给真入口 `CombatPipeline.DealWithAttacks`。
+    /// 【为什么自己拼一拍而不复用 TickFight】：那条只认两个人，而这一区断言的就是第三个人的存在
+    /// </summary>
+    private void TickTrio(params KeyMap[] pressed)
+    {
+        LogicClock.Advance();
+        _input.Tick();
+        _target.input.Tick();
+        _mate.input.Tick();
+        for (int i = 0; i < pressed.Length; i++) _input.AddInput(pressed[i]);
+        _action.Tick();
+        _target.action.Tick();
+        _mate.action.Tick();
+        RefreshBoxes(_character);
+        RefreshBoxes(_target);
+        RefreshBoxes(_mate);
+        CharacterObj.SampleOverlaps(_trio, _hitBuffer);
+        CombatPipeline.DealWithAttacks(_trio, _character);
+        _character.Tick();
+        _target.Tick();
+        _mate.Tick();
+        CharacterObj.SeparateLanes(_trio);
+        CharacterObj.ApplyHolds(_trio);
+    }
+
+    /// <summary>
+    /// 把 `_mate` 摆到 `_target` 此刻正开着的那只盒子底下。
+    /// 【为什么这样摆而不是猜一个距离】：飞出去的人砸的就是他四肢所在那一点，而 EditMode 里 Animator
+    /// 把手脚摆在哪本来就不算玩法；把靶子放到盒子底下，断言的就只剩"这一记到底认不认同边的人"
+    /// </summary>
+    private void PlaceMateUnderAnActiveBox()
+    {
+        Assert.IsTrue(AnyActiveBox(_target), "前提：飞出去的人身上至少得有一只攻击盒开着");
+        AttackHitBox limb = null;
+        foreach (AttackHitBox b in _target.AttackBoxes)
+            if (b.Active) { limb = b; break; }
+        Vector3 want = WorldCenter(limb.GetComponent<Collider>());
+        Vector3 here = WorldCenter(_mateBody.GetComponent<Collider>());
+        _mate.transform.position += want - here;
+        Physics.SyncTransforms();
+    }
+
+    private static bool AnyActiveBox(CharacterObj c)
+    {
+        foreach (AttackHitBox b in c.AttackBoxes) if (b.Active) return true;
+        return false;
+    }
+
+    /// <summary>空跑到 `_target` 那一记的盒子开着的那一拍（表里开窗的拍号各家不同，不写死）</summary>
+    private void RunUntilTargetOpensABox(int maxTicks = 20)
+    {
+        for (int i = 0; i < maxTicks && !AnyActiveBox(_target); i++) TickTrio();
+        Assert.IsTrue(AnyActiveBox(_target), "前提：没等到那只盒子开着的那一拍");
+    }
+
+    /// <summary>
+    /// 让 `_target` 站上"被摔出去"那一行，并跑到他的四肢盒子开着的那一拍。
+    /// 【为什么直接换动作而不把整局投掷跑一遍】：投掷那记的盒子与手里的人的坐标由 1.8 那条
+    /// `ThrowHitBoxIsPlacedOnTheHeldUnit` 钉死了，这一区要钉的是"他摔出去之后那一记还算不算命中"
+    /// </summary>
+    private void PutTargetInThrownRow()
+    {
+        _target.action.SetAllActions(GameData.ActionsFor(FamilyOf("EnemyThrown")), "EnemyThrown");
+        RunUntilTargetOpensABox();
+    }
+
+    [Test]
+    public void ThrownBodyKnocksHisOwnMateDown()
+    {
+        BuildTrio();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 10f, 0f);
+        GiveStats(_mate, 100f, 0f, 0f);
+
+        PutTargetInThrownRow();
+        Assert.IsTrue(_target.HasOwnSideAttackOpen(), "被摔的那一行开的是「只打自己人」那一记");
+        PlaceMateUnderAnActiveBox();
+
+        TickTrio();
+        Assert.AreEqual(90f, _mate.Stats.Hp, 1e-4f,
+            "10 攻 × 表里 1.0 × 盒倍率 1 × 肉质 1 − 0 防：队友被砸掉的就是这一记全额伤害");
+        Assert.IsFalse(_target.CanHitTargetAgain(_mate, 0),
+            "表里 canHitSameTarget 是 1：同一具身体只砸同一个人一次，不然飞出去的一路砸一路掉血");
+
+        //命中那一拍只写预约，动作拍在它之前，所以派生出来的倒下要下一拍才生效
+        TickTrio();
+        Assert.AreEqual("Beaten", _mate.action.CurrentAction.catalog,
+            "砸到就把他打倒：源工程摔出去的人砸到的队友直接进 knockdown");
+    }
+
+    [Test]
+    public void ThrownBodySparesThePlayerWhoThrewIt()
+    {
+        BuildTrio();
+        GiveStats(_character, 100f, 0f, 0f);
+        GiveStats(_target, 100f, 10f, 0f);
+        GiveStats(_mate, 100f, 0f, 0f);
+
+        PutTargetInThrownRow();
+        //把玩家挪到那只盒子底下：同侧那一记既不该被"敌人对玩家"那条常规循环认领，
+        //也不该被同侧相碰认领（玩家不是他的同边人）
+        AttackHitBox limb = null;
+        foreach (AttackHitBox b in _target.AttackBoxes) if (b.Active) { limb = b; break; }
+        Assert.IsNotNull(limb, "前提：飞出去的人身上有盒子开着");
+        BeHitBox playerBox = null;
+        foreach (BeHitBox b in _character.BeHitBoxes)
+            if ((b.TagMask & BoxTagRegistry.MaskOf("Hurt")) != 0) playerBox = b;
+        _character.transform.position += WorldCenter(limb.GetComponent<Collider>())
+                                        - WorldCenter(playerBox.GetComponent<Collider>());
+        Physics.SyncTransforms();
+
+        for (int i = 0; i < 4; i++) TickTrio();
+        Assert.AreEqual(100f, _character.Stats.Hp, 1e-4f,
+            "摔出去的身体不砸摔他的玩家：那一记 hitOwnSideOnly，常规两条循环都跳过它");
+    }
+
+    [Test]
+    public void OrdinaryEnemyPunchDoesNotSmashHisMates()
+    {
+        BuildTrio();
+        GiveStats(_character, 100f, 0f, 0f);
+        GiveStats(_target, 100f, 10f, 0f);
+        GiveStats(_mate, 100f, 0f, 0f);
+
+        //敌兵出拳（demo 那一家里的 Punch1，盒子就是同一只 RightPunch），把队友摆在拳头底下
+        _target.action.SetAllActions(GameData.ActionsFor(FamilyOf("Punch1")), "Punch1");
+        RunUntilTargetOpensABox();
+        Assert.IsFalse(_target.HasOwnSideAttackOpen(), "普通那一记没写 hitOwnSideOnly");
+        PlaceMateUnderAnActiveBox();
+
+        TickTrio();
+        Assert.AreEqual(100f, _mate.Stats.Hp, 1e-4f,
+            "被拳脚打退的人不该顺手砸队友：源工程里 hitOtherEnemiesWhenFalling 默认就是关的");
+    }
+
+    /// <summary>
+    /// 数据耦合的闸门（与 1.8 那条"投掷的盒子罩得住手里的人"同一类）：
+    /// 摔人的那一行是按 id 指名受摔的那一行的，而受摔的那一行在每个会被生成的敌兵身上都得存在。
+    /// 少一处不会报错，只会变成"被摔的人一边飞一边站着"——Play Mode 里那看起来像动画没播
+    /// </summary>
+    [Test]
+    public void ThrowRoutesToTheThrownRowThatEverySpawnedUnitHas()
+    {
+        ActionChangeInfo to = Info("PlayerThrow").attacks[0].targetActionChange;
+        Assert.AreEqual(ActionChangeType.ChangeToActionId, to.changeType,
+            "被摔与被打退要走两行不同的动作，所以这里只能按 id 指名，不能按 catalog");
+        Assert.AreEqual("EnemyThrown", to.param);
+
+        WaveTable.Load();
+        LevelRow level = WaveTable.Get("Level1");
+        Assert.NotNull(level, "前提：GameMain.firstLevelId 默认是 Level1");
+        for (int w = 0; w < level.waves.Length; w++)
+        {
+            SpawnRow[] rows = level.waves[w].enemies;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Resources/" + rows[i].prefab + ".prefab");
+                string[] subset = prefab.GetComponent<CharacterObj>().actionSubset;
+                Assert.GreaterOrEqual(System.Array.IndexOf(subset, "EnemyThrown"), 0,
+                    rows[i].prefab + " 不会那一行被摔的动作，投掷会静默变成「一边飞一边站着」");
+                Assert.GreaterOrEqual(System.Array.IndexOf(subset, "EnemyDefend"), 0,
+                    rows[i].prefab + " 不会格挡那一行，AI 替他按的格挡键就按了个空");
+            }
+        }
+    }
+
+    [Test]
+    public void EnemyDefendRowBlocksWithTheAttackerOwnNumbers()
+    {
+        BuildTarget();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 0f, 0f);
+        FlatBoxes();
+        PlaceFaceToFace();
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];
+        BeHitBoxTurnOnInfo guard = Info("EnemyDefend").defensePhase[0];
+        Assert.IsTrue(guard.block, "前提：敌兵那一行的受击阶段写着挡得住");
+
+        DamagePayload p = CombatPipeline.Settle(_character, _target, in attack, in guard, _fist, _targetBody);
+        Assert.IsTrue(p.Blocked, "敌兵挡在正脸上，跟玩家挡在正脸上是同一条判断");
+        Assert.AreEqual(0f, p.Damage, 1e-4f, "挡住不掉血");
+        Assert.AreEqual(attack.blockStunFrames, p.StunFrames, "挡住罚的是攻击方表上那几拍");
+        Assert.AreEqual(attack.blockPush.moveDistance.x, p.Push.moveDistance.x, 1e-4f, "挡住推开的是攻击方表上那一段");
+    }
+
+    /// <summary>
+    /// 看见玩家起手 → 下一拍替他按格挡键 → 表里那一行把他收进防御姿势。
+    /// 【AI 拍在动作拍之前，所以必然晚一拍看见】：这一拍登记的是上一拍的动作状态读到的东西，
+    /// 与玩家自己按键的时机一字不差，不是 AI 特有的迟钝
+    /// </summary>
+    [Test]
+    public void MindRaisesTheGuardWhenThePlayerCommits()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.attackChanceWhenIdle = 0;
+        m.attackChanceWhenSomeBusy = 0;      //这一条只管挡，不许他顺手出手
+        m.defendChance = 100;
+        m.defendHoldFrames = 6;
+        StartRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        _target.transform.position = new Vector3(1f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 0, KeyMap.Punch);
+        Assert.AreEqual("PlayerPunch1", _character.action.CurrentAction.id, "前提：玩家已经进那一记了");
+        Assert.AreEqual(0, m.GuardLeft, "起手与看见在同一拍里看不见：AI 拍在动作拍之前");
+
+        TickMind(m, 0);
+        Assert.AreEqual(5, m.GuardLeft, "6 拍里第一拍已经用掉一拍");
+        Assert.AreEqual("EnemyDefend", _target.action.CurrentAction.id,
+            "替他按的格挡键走的是表里那一行，跟玩家自己按住格挡是同一条路");
+
+        for (int i = 0; i < 5; i++) TickMind(m, 0);
+        Assert.AreEqual(0, m.GuardLeft, "defendHoldFrames 走完就撒手");
+    }
+
+    /// <summary>
+    /// 同一记攻击只抽一次。【每拍都抽会是什么】：表里 30% 摊在二十几拍上就成了"几乎必挡"，
+    /// 而那个数就不再是 defendChance 了
+    /// </summary>
+    [Test]
+    public void GuardRollsOncePerAttackAndAgainOnTheNextOne()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.attackChanceWhenIdle = 0;
+        m.attackChanceWhenSomeBusy = 0;
+        m.defendChance = 100;
+        m.defendHoldFrames = 2;
+        StartRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        _target.transform.position = new Vector3(1f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 0, KeyMap.Punch);
+        TickMind(m, 0);
+        Assert.AreEqual(1, m.GuardLeft, "前提：举盾还剩一拍");
+        TickMind(m, 0);
+        Assert.AreEqual(0, m.GuardLeft, "举盾用完");
+
+        //玩家那一记还要跑二十来拍，这段时间里不许再抽
+        for (int i = 0; i < 6; i++) TickMind(m, 0);
+        Assert.AreEqual("PlayerPunch1", _character.action.CurrentAction.id, "前提：那一记还没打完");
+        Assert.AreEqual(0, m.GuardLeft, "同一记攻击不重抽");
+
+        //换一记：回到站立再起手，就该重新抽一次
+        _target.action.SetAllActions(GameData.ActionsFor(_target.actionSubset), "BoxingStand");
+        StartRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        TickMind(m, 0);
+        TickMind(m, 0, KeyMap.Punch);
+        TickMind(m, 0);
+        Assert.AreEqual(1, m.GuardLeft, "新一记重新抽一次：源工程的 defendChance 就是「挨每一记之前」的概率");
+    }
+
+    [Test]
+    public void GuardRespectsChanceAndRange()
+    {
+        BuildTarget();
+        StartRows("PlayerIdle", FamilyOf("PlayerIdle"));
+
+        EnemyMind m = MakeMind(_target, _character);
+        m.attackChanceWhenIdle = 0;
+        m.attackChanceWhenSomeBusy = 0;
+        m.defendChance = 0;                 //源工程这个数默认就是 0：没配的敌兵根本不会挡
+        m.defendHoldFrames = 6;
+        _target.transform.position = new Vector3(1f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+        TickMind(m, 0, KeyMap.Punch);
+        TickMind(m, 0);
+        Assert.AreEqual(0, m.GuardLeft, "抽概率为 0 就永远不挡");
+
+        //概率拉满、人也够近，但抽中之前的那一拍还得在射程里
+        m.defendChance = 100;
+        _target.transform.position = new Vector3(m.defendRangeX + 1f, 0f, 0f);
+        StartRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        _target.action.SetAllActions(GameData.ActionsFor(_target.actionSubset), "BoxingStand");
+        TickMind(m, 0, KeyMap.Punch);
+        TickMind(m, 0);
+        Assert.AreEqual(0, m.GuardLeft, "那一记根本够不着我，为什么要挡");
     }
 }

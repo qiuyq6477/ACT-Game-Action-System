@@ -387,36 +387,10 @@ public class GameMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 处理每个角色的本帧攻击
+    /// 本逻辑帧谁打到了谁：整段在 `CombatPipeline.DealWithAttacks` 里（用例打的是那一个真入口）
     /// </summary>
     private void DealWithAttacks()
     {
-        //过的是 `_all` 而不是场景里那份 `enemy`：波次表生成的人不在 Inspector 上，
-        //第 0 个是玩家自己所以从 1 开始
-        for (int index = 1; index < _all.Count; index++)
-        {
-            CharacterObj ene = _all[index];
-            if (ene == null) continue;
-            //玩家对敌人
-            if (player.CanAttackTargetNow(ene, out AttackInfo pAttackPhase, out BeHitBoxTurnOnInfo eDefenseInfo,
-                    out AttackHitBox pAttackBox, out BeHitBox eneBox)) 
-            {
-                //先判断，如果命中记录表示没法命中，那么这个框的信息无效
-                if (player.CanHitTargetAgain(ene, pAttackPhase.phase))
-                {
-                    CombatPipeline.ResolveHit(player, ene, in pAttackPhase, in eDefenseInfo, pAttackBox, eneBox);
-                }
-            }
-            //敌人对玩家
-            if (ene.CanAttackTargetNow(player, out AttackInfo eAttackPhase, out BeHitBoxTurnOnInfo pDefenseInfo,
-                    out AttackHitBox eAttackBox, out BeHitBox playerBox)) 
-            {
-                //先判断，如果命中记录表示没法命中，那么这个框的信息无效
-                if (ene.CanHitTargetAgain(player, eAttackPhase.phase))
-                {
-                    CombatPipeline.ResolveHit(ene, player, in eAttackPhase, in pDefenseInfo, eAttackBox, playerBox);
-                }
-            }
-        }
+        CombatPipeline.DealWithAttacks(_all, player);
     }
 }
