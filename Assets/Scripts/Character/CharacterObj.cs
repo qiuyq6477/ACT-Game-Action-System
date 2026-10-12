@@ -332,7 +332,9 @@ public class CharacterObj : MonoBehaviour
         //按defensePhase的表顺序取第一个跟这个盒子有共同tag的阶段。
         //原来是拿盒子的tag当外层去比，只有当一个盒子带多个tag、而这些tag又被不同阶段开启时
         //两者才会挑到不同的阶段，而那种配表本来就被声明为"听天由命"（见ActionInfo的defensePhase注释）
-        foreach (BeHitBoxTurnOnInfo info in action.ActiveBeHitBoxInfo)
+        //【阶段一定要从盒子主人身上取】盒子属于挨打的一方，而调用本函数的this是打人的一方；
+        //攻击盒的OnTriggerEnter从来不会把主人自己的受击盒记进_boxTouches，所以读this那份列表永远不可能读到开启这个盒子的阶段
+        foreach (BeHitBoxTurnOnInfo info in box.master.action.ActiveBeHitBoxInfo)
         {
             if ((info.tagMask & box.TagMask) != 0)
                 return info;
@@ -420,30 +422,14 @@ public class CharacterObj : MonoBehaviour
         attackBox = bestAttackBox;
         targetBox = bestTargetBox;
         defensePhase = bestDefense;
-        if (bestBoxInfo.attackPhase >= 0 && bestBoxInfo.attackPhase < action.CurrentAction.attacks.Length)
-            attackPhase = action.CurrentAction.attacks[bestBoxInfo.attackPhase];
+        //attackPhase存的是AttackInfo的phase号而不是attacks数组下标，和AddHitRecord一样按phase查
+        //（表里两者恰好一直是0，所以拿它当过下标也没出事）
+        int attackIdx = action.IndexOfAttack(bestBoxInfo.attackPhase);
+        if (attackIdx >= 0) attackPhase = action.CurrentAction.attacks[attackIdx];
         GcProbe.End(GcProbe.Region.CanAttackTargetNow, gcProbe);
         return true;
     }
     
-
-    /// <summary>
-    /// 攻击框命中了对手哪些受击框，一个也没的话就会是空数组了
-    /// </summary>
-    /// <param name="attackBox">攻击框</param>
-    /// <param name="target">对手</param>
-    /// <returns></returns>
-    private List<BeHitBox> AttackBoxHitTargetIn(AttackHitBox attackBox, CharacterObj target)
-    {
-        List<BeHitBox> res = new List<BeHitBox>();
-        if (!_boxTouches.ContainsKey(attackBox)) return res;
-        foreach (BeHitBox hitBox in _boxTouches[attackBox])
-        {
-            if (hitBox.master == target)
-                res.Add(hitBox);
-        }
-        return res;
-    }
     
     /// <summary>
     /// 添加命中记录
