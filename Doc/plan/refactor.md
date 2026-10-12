@@ -78,6 +78,23 @@
 
 已知未处理项：调试用的输入面板每帧重建字符串（`GameMain.cs:67` → `InputToCommand.InputText()`），是 Phase 1 之后最大的每帧分配源，属表现层，登记在 `Doc/issue/ui-inputtext-per-frame-alloc.md`。
 
+#### Phase 1 验收实测
+
+Unity 2023.2.0f1 编辑器播放 `Assets/Scenes/GameMain.unity`（玩家 + 2 个敌人同屏，连击、受击、转身、前后移动），
+`GcProbe` 每 300 帧汇总一次。**稳态结论：六个分区 avg=0、max=0**，最后一个窗口分别是
+`ActionControllerUpdate n=900`、`CalculateBoxInfo n=900`、`ChangeByCatalog n=0`（该窗口没有受击发生）、
+`CanAttackTargetNow n=1200`、`NatureMove n=900`、`InputUpdate n=900`，全部 0 Byte。
+报告里的"自检 1056B"是新分配一块 1024 字节数组加对象头的量，它是判定"这些 0 是真 0"的对照量（详见 `Doc/bugfix/gc-probe-false-zero.md`）。
+
+判据要按**稳态**看，进播放的头两个 300 帧窗口不是 0，但都不是每帧分配：
+
+| 观测到的非零 | 量 | 性质 |
+| :--- | :--- | :--- |
+| `InputUpdate` max=4128 / 8224 | 启动期 | `_input` / `_newInputs` 这些常驻 List 第一次扩容（容量按倍增，涨到位之后就不再分配） |
+| `ActionControllerUpdate` / `CalculateBoxInfo` max=512 / 416 / 160 | 启动期 | `_preorderActions`、`ActiveAttackBoxInfo` 等常驻 List 的首次扩容 |
+| `ChangeByCatalog` avg=max=106，`n=1` | 全会话第一次按分类选动作 | `PickActionMethod` 的静态构造（字典 + 两个委托对象）在这第一次才被摸到；之后 `n=1`、`n=2` 的窗口里 max 都是 0 |
+| `CanAttackTargetNow` max=48，`n=1200` avg=0 | 第一次命中那一帧 | 一次性暖机，1200 次调用里只有 1 次 |
+
 ---
 
 ### Phase 2：定点逻辑时钟与物理/地形解耦（核心稳定性）
