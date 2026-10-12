@@ -105,7 +105,6 @@ public class GameMain : MonoBehaviour
         {
             long gcProbe = GcProbe.Begin(GcProbe.Region.CharacterTick);
             c.Tick();
-            MoveCharacter(c);
             GcProbe.End(GcProbe.Region.CharacterTick, gcProbe);
         }
     }
@@ -114,22 +113,6 @@ public class GameMain : MonoBehaviour
     {
         foreach (AttackHitBox box in c.AttackBoxes) box.Tick();
         foreach (BeHitBox box in c.BeHitBoxes) box.Tick();
-    }
-
-    /// <summary>
-    /// 移动。这里没有地形，所以还是y>0就算falling，地面探测在Phase 2第2步进来
-    /// </summary>
-    private void MoveCharacter(CharacterObj c)
-    {
-        Transform trans = c.transform;
-        Vector3 was = trans.position;
-        c.Falling = was.y > 0;
-        Vector3 moved = c.ThisTickMove();
-        trans.position = new Vector3(
-            was.x + moved.x,
-            Mathf.Max(0, was.y + moved.y),
-            was.z + moved.z
-        );
     }
 
     private void LateUpdate()

@@ -22,32 +22,47 @@ public class CharacterObj : MonoBehaviour
     public float weight = 4.5f;
 
     /// <summary>
-    /// 是否正在下落
+    /// 贴地探测用的球半径（米）
     /// </summary>
-    private bool _falling = false;
+    public float groundProbeRadius = 0.3f;
+
+    /// <summary>
+    /// 站在地面上时允许留的缝隙（米），也等于能自动爬上来的最大台阶高度
+    /// </summary>
+    public float groundSnapTolerance = 0.02f;
+
+    /// <summary>
+    /// 地面所在层。探测只认这一层，角色身上那一堆触发盒因此天然被排除；
+    /// 要放斜坡得用BoxCollider或者凸的MeshCollider——形状投射打不到非凸的网格碰撞体
+    /// </summary>
+    private const string GroundLayerName = "Ground";
+    /// <summary>
+    /// 地面层的掩码，Awake里解析：LayerMask.NameToLayer不许出现在字段初始化器里（那等于在.cctor里调），
+    /// 而且层不存在时它返回-1，1 << -1在C#里是未定义行为，所以只能在Awake里判完再生成
+    /// </summary>
+    private int _groundMask;
+
+    /// <summary>
+    /// 探测距离的余量（米），免得正好站在地面上时压在PhysX的边界上，理由见 ProbeGround
+    /// </summary>
+    private const float ProbeMargin = 0.001f;
+
+    /// <summary>
+    /// 在地面上还是在空中。是否下落从来不是角色自己说了算的（这是绝大多数游戏教程、
+    /// 也包括UE的游戏框架在内做错的地方），它取决于地形，所以由地面探测决定；
+    /// 眼下它的消费者是重力，空中出招、落地后摇这些以后也要靠它
+    /// </summary>
+    public MoveState State { get; private set; } = MoveState.Grounded;
+
+    /// <summary>
+    /// 只在落地的那一个逻辑帧为true（每次Tick开头清零），留给以后的落地动作或者音效
+    /// </summary>
+    public bool JustLanded { get; private set; }
+
     /// <summary>
     /// 下落的重量
     /// </summary>
     private float _curWeight = 0;
-
-    /// <summary>
-    /// 当前是否下降这个东西，并不是由角色自己说了算的，这是绝大多数游戏教程，也包括UE的游戏框架在内，完全做错的地方
-    /// 因为是否下落取决于地形等游戏中的其他元素，不仅仅取决于角色自身，甚至几乎不取决于角色自己
-    /// 而角色不应该依赖于其他这么多的元素，所以应该由“最小弟”的GameMain这一层来告诉我，我该不该下落
-    /// </summary>
-    public bool Falling
-    {
-        get => _falling;
-        set
-        {
-            if (value && !_falling)
-            {
-                //得初始化一下当前重量         
-                _curWeight = 0;
-            }
-            _falling = value;
-        }
-    }
 
     /// <summary>
     /// 碰撞盒的碰撞信息，现在这里缓存一下
@@ -145,13 +160,22 @@ public class CharacterObj : MonoBehaviour
         //盒子由GameMain的时钟按固定顺序刷新，所以这里要把两组盒子留在身上，免得每帧再遍历一次子节点
         AttackBoxes = attackBoxes.ToArray();
         BeHitBoxes = beHitBoxes.ToArray();
+
+        //这一层不存在的话探测永远落空，角色会一路往下掉，而这种错法本来没有任何报错，所以这里必须喊一声
+        int groundLayer = LayerMask.NameToLayer(GroundLayerName);
+        if (groundLayer < 0)
+            Debug.LogError("工程里没有 " + GroundLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
+                           "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
+        else
+            _groundMask = 1 << groundLayer;
     }
 
     /// <summary>
-    /// 推进一个逻辑帧：目前只有命中记录的冷却，移动和地面在GameMain的时钟里同帧另外处理
+    /// 推进一个逻辑帧：命中记录的冷却、移动积分、地面探测，最后写出位置
     /// </summary>
     public void Tick()
     {
+        JustLanded = false;
         //以下内容只有不在硬直才会执行
         if (!action.Freezing)
         {
@@ -159,7 +183,76 @@ public class CharacterObj : MonoBehaviour
             foreach (HitRecord record in HitRecords)
                 record.Tick();
         }
-        
+
+        Move();
+    }
+
+    /// <summary>
+    /// 算出这一逻辑帧的位移，再用地面探测决定脚落在哪里
+    /// </summary>
+    private void Move()
+    {
+        Vector3 was = transform.position;
+        Vector3 moved = ThisTickMove();
+        Vector3 to = was + moved;
+
+        float groundY;
+        if (ProbeGround(was, to, out groundY))
+        {
+            to.y = groundY;   //贴地，斜坡和台阶就靠这一行
+            if (State == MoveState.Airborne)
+            {
+                State = MoveState.Grounded;
+                JustLanded = true;
+                _curWeight = 0;
+            }
+        }
+        else if (State == MoveState.Grounded)
+        {
+            //走下平台或者被打飞：刚开始下落，速度从0算起
+            State = MoveState.Airborne;
+            _curWeight = 0;
+        }
+
+        transform.position = to;
+    }
+
+    /// <summary>
+    /// 脚下这一列有没有地面，有的话地面在多高。
+    /// 三条不能想当然的地方：
+    /// 【起点取移动前后较高的那个脚底高度】下降时要从移动前起投，扫过的才是本帧掉下来的那一截——
+    ///   只从移动后起投会把这一截漏掉，掉得快时球一开始就已经在碰撞体里面，PhysX只给一个distance=0的命中，
+    ///   反算出来的"地面"比人还低，人就一路往地下钻；上升时又必须从移动后起投，
+    ///   否则击退把人抛起来的那段会被"我原来站在地上"给判回去，人根本飞不起来；
+    /// 【要抬高一个缝隙】球的最低点悬在脚底上方一道缝隙处——球跟地面相切时PhysX算不命中，
+    ///   角色就会隔一帧以为自己在空中，而每次以为开始下落都清零速度，人就再也掉不下来；
+    /// 【探测距离不算半径】可用距离只有"缝隙+余量+本帧掉下的距离"。把半径也算进去的话（0.3米），
+    ///   角色刚被抛起几十厘米依然被判成还在地上。
+    /// 横向一律用移动完的位置，这样走下边缘时脚下那一列就是真的那一列。
+    /// </summary>
+    /// <param name="was">移动前的位置</param>
+    /// <param name="to">移动完的位置</param>
+    /// <param name="groundY">地面高度，只有返回true时有效</param>
+    /// <returns></returns>
+    private bool ProbeGround(Vector3 was, Vector3 to, out float groundY)
+    {
+        float radius = groundProbeRadius;
+        float fallen = Mathf.Max(0f, was.y - to.y);
+        float originY = Mathf.Max(was.y, to.y) + radius + groundSnapTolerance;
+        //ProbeMargin是给正好站在地上那一档留的余量：那时要走的距离恰好等于缝隙，不留余量就压在PhysX的边界上。
+        //地面高度是按hit.distance反算的，余量不会把结果带偏
+        float distance = groundSnapTolerance + ProbeMargin + fallen;
+
+        RaycastHit hit;
+        if (!Physics.SphereCast(new Vector3(to.x, originY, to.z), radius, Vector3.down,
+                out hit, distance, _groundMask))
+        {
+            groundY = 0;
+            return false;
+        }
+
+        groundY = originY - radius - hit.distance;
+        return true;
     }
 
     /// <summary>
@@ -407,8 +500,8 @@ public class CharacterObj : MonoBehaviour
             _forceMove.Advance();
             return fMove;
         }
-        //下落重量按逻辑帧累加，换算成位移时才乘Tick（不在Update里做，由时钟调用的地方统一推进）
-        if (_falling) _curWeight += weight;
+        //下落重量按逻辑帧累加，换算成位移时才乘Tick；空中才积，一落地就归零
+        if (State == MoveState.Airborne) _curWeight += weight;
         else _curWeight = 0;
         //有强制位移的时候强制位移，没有的时候自然移动
         return  NatureMove();
@@ -422,4 +515,22 @@ public class CharacterObj : MonoBehaviour
     {
         _forceMove = ForceMove.FromData(force);
     }
+}
+
+/// <summary>
+/// 角色的移动状态。
+/// 规划里的第三个状态Landing（落地后摇）这期没做：现在整个工程里没有跳跃，
+/// 唯一能离地的是一记击退的0.2米、统共两三个逻辑帧，落地动作既没动画也没表条目，
+/// 做出来是个没有消费者的分支。等Phase 3把跳跃或者落地动作带出来再接。
+/// </summary>
+public enum MoveState
+{
+    /// <summary>
+    /// 在地面上：可以自然奔跑，重力不积分
+    /// </summary>
+    Grounded,
+    /// <summary>
+    /// 滞空：重力按逻辑帧积分
+    /// </summary>
+    Airborne,
 }
