@@ -119,13 +119,21 @@ public class ActionController : MonoBehaviour
     private Action<ActionInfo, ActionInfo> _onChangeAction = null;
 
     /// <summary>
-    /// Animator降级成本时钟的从属：不再由Unity按渲染帧自己推进，只在Tick里被显式步进一个逻辑帧。
-    /// 于是"逻辑认为在第几帧"和"屏幕上是第几帧的姿势"是同一个数，漂移在构造上为0，
-    /// 硬直也变成精确的"不步进"（原来是 anim.speed = 0，还会照常求值一遍姿势）
+    /// 面向怎么落地，由角色自己身上的 FacingApply 决定（逻辑层只持有 inversed 这个真源）
     /// </summary>
+    private FacingApply _facing;
+
     private void Awake()
     {
+        //Animator降级成本时钟的从属：不再由Unity按渲染帧自己推进，只在Tick里被显式步进一个逻辑帧。
+        //于是"逻辑认为在第几帧"和"屏幕上是第几帧的姿势"是同一个数，漂移在构造上为0，
+        //硬直也变成精确的"不步进"（原来是 anim.speed = 0，还会照常求值一遍姿势）
         anim.enabled = false;
+
+        _facing = GetComponent<FacingApply>();
+        if (!_facing)
+            Debug.LogError("角色 " + name + " 的根节点上没有 FacingApply：面向不会落地。" +
+                           "请在 prefab 根节点补一个——3D 骨骼模型选 ModelYaw，贴在 3D 平面上的精灵选 SpriteScaleX");
     }
 
     /// <summary>
@@ -385,8 +393,9 @@ public class ActionController : MonoBehaviour
             }
             
             _wasFrame = CurrentFrame = startFrame;
-            //顺便修一下面向
-            transform.eulerAngles = new Vector3(0, command.inversed ? 270 : 90, 0);
+            //顺便修一下面向。落地方式交给角色身上的 FacingApply：
+            //3D 模型是绕 Y 转 90/270，精灵则是 localScale.x 取反——写死欧拉角的话精灵会侧对镜头变成一条线
+            if (_facing) _facing.Apply(command.inversed);
             //修正完毕才接受新的是否要转向，因为可能这个动作本身自带转向
             if (aInfo.flip) command.inversed = !command.inversed;
             
