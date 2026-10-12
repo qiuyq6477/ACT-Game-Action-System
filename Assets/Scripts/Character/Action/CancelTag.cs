@@ -27,6 +27,14 @@ public struct CancelTag
     /// 当从这里Cancel动作时，优先级变化
     /// </summary>
     public int priority;
+
+    /// <summary>
+    /// 这道派生额外的门禁，指向 Methods/CancelConditionMethod 下的函数，
+    /// 比如空中不许接地面招就写 {method:"StateIs", param:["Grounded"]}。
+    /// 【留空 = 没有门禁】，现有表项因此一条都不用改。
+    /// 判定发生在标签对得上、指令也搓对之后（`ActionController.CanActionCancelCurrent`）
+    /// </summary>
+    public ScriptMethodInfo cancelCondition;
 }
 
 [Serializable]

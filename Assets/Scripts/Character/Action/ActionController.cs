@@ -129,6 +129,23 @@ public class ActionController : MonoBehaviour
     /// </summary>
     private FacingApply _facing;
 
+    /// <summary>
+    /// 同一个 GameObject 上的 CharacterObj。取消条件函数要看的是"我"这个角色的状态
+    /// （在地面还是空中、站在哪、近处有谁），而这些不归本组件管。
+    /// 【为什么不写进 Inspector 也不在 Awake 里取】：EditMode 不跑 Awake，而用例照样要跑到门禁那一步，
+    /// 所以 lazily 取一次；两个组件同属一个 GameObject，取不到就是 prefab 配错了
+    /// </summary>
+    private CharacterObj _owner;
+
+    private CharacterObj Owner
+    {
+        get
+        {
+            if (!_owner) _owner = GetComponent<CharacterObj>();
+            return _owner;
+        }
+    }
+
     private void Awake()
     {
         //Animator降级成本时钟的从属：不再由Unity按渲染帧自己推进，只在Tick里被显式步进一个逻辑帧。
@@ -371,13 +388,23 @@ public class ActionController : MonoBehaviour
             //检查输入
             if (checkCommand)
             {
+                bool commandFit = false;
                 foreach (ActionCommand ac in action.commands)
                 {
                     //任何一条操作符合，就算符合
-                    if (command.ActionOccur(ac)) return true;
+                    if (command.ActionOccur(ac))
+                    {
+                        commandFit = true;
+                        break;
+                    }
                 }
+                if (!commandFit) continue;
             }
-            else return true;   //不检查输入，到这里就直接符合了
+
+            //门禁排在标签和指令之后：那两条不成立时根本不该问它，
+            //于是取消条件函数一帧最多在"真的差点要派生"的时候被问一次
+            if (!CancelConditionMethod.Allows(foundTag.cancelCondition, Owner)) continue;
+            return true;   //标签、指令、门禁三条全过了
         }
 
         return false;   //很遗憾，找不到

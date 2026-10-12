@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要认下来，否则用例算失败
 
 /// <summary>
 /// Phase 2 第3步的验收用例。跑法：Window → General → Test Runner → EditMode → Run All（不用按Play）。
@@ -9,7 +10,7 @@ using UnityEngine;
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的七件事：
+/// 钉的八件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -26,11 +27,17 @@ using UnityEngine;
 ///    没填轨迹的盒子留在 prefab 的位置上，同一盒子被两条表项开启时由优先级高的说了算。
 ///    【这一组的表项是现造的】：真表里此刻还没有 track/cues，往 Action.json 塞测试行会污染策划的表。
 ///    【这一组以前根本写不出来】：盒子在哪只由 .anim 曲线说了算，表管不着，用例也无从问起。
+/// 8. 派生门禁、长按与确定性随机（BeatEmUp 移植切片 1.6）：同一张表同一个输入，站着能接的招
+///    在半空接不出来；追击条件既查距离也查对方此刻的动作；Block 每拍登记所以按住=每拍重新成立，
+///    松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；
+///    随机数只由种子和抽样次数决定（换帧率分法、换种子、退化点、取值范围全钉住）；
+///    函数名写错时门禁按"不成立"处理而不是放行。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
 /// 第11区（相交采样）另外把判定盒拍和采样拍也跑起来，因为它断言的就是"打到没有"；
-/// 第12区把判定盒拍也跑起来，因为它断言的是盒子被摆到哪。
+/// 第12区把判定盒拍也跑起来，因为它断言的是盒子被摆到哪；
+/// 第13区大多只跑到动作拍，只有制造滞空那一处要额外走一拍移动拍（地面探测在那一拍里写 State）。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -1155,5 +1162,279 @@ public class ActionFrameClockTests
         Assert.AreEqual(new Vector3(0.9f, 0.2f, 0f), _trackBox.transform.localPosition,
             "高优先级那条排在数组第二位也得它说了算");
         Assert.AreEqual(new Vector3(3f, 1f, 0.5f), _trackCol.size, "尺寸同样跟着高优先级那条");
+    }
+
+    //==================================== 13. 派生门禁、长按、确定性随机（切片 1.6） ====================================
+    //
+    // 表项同样是现造的（理由见第12区那段）。这一区钉的是「标签对上了、指令也搓对了，
+    // 但此刻到底准不准」这一层——以前框架里根本没有这一层，配不出来也配不了。
+
+    private static ScriptMethodInfo Cond(string method, params string[] param)
+    {
+        return new ScriptMethodInfo { method = method, param = param };
+    }
+
+    /// <summary>
+    /// 一个「想挤掉别人」的动作：靠 byKey 这条指令进来，外面套一道门禁
+    /// </summary>
+    private static ActionInfo Comeback(string id, string gate, ScriptMethodInfo condition, KeyMap byKey)
+    {
+        ActionInfo info = Row(id, 20, null);
+        info.cancelTag = new[]
+        {
+            new CancelTag {tag = gate, startFromFrame = 0, fadeInFrames = 0, priority = 0,
+                cancelCondition = condition},
+        };
+        info.commands = new[]
+        {
+            new ActionCommand {keySequence = new[] {byKey}, validInFrames = 2},
+        };
+        return info;
+    }
+
+    /// <summary>
+    /// 一个「等着被挤掉」的动作：整段都开着那道门禁的窗口，40 拍，用例期间不会自己结束
+    /// </summary>
+    private static ActionInfo Waiting(string id, string gate)
+    {
+        ActionInfo info = Row(id, 40, null);
+        info.beCancelledTag = new[]
+        {
+            new BeCancelledTag
+            {
+                cancelWindowFrames = new FrameRange {min = 0, max = 38},
+                cancelTag = new[] {gate},
+                fadeOutFrames = 0,
+                priority = 0,
+            },
+        };
+        return info;
+    }
+
+    /// <summary>
+    /// 历史里还剩不还剩这个键，用一条 60 帧的回看窗口去问。
+    /// 【为什么不用 IsKeyHeld】：它的窗口只有两拍，刚按下的 Punch 本来就还在窗口里，
+    /// 那样「清理生效了没」这条断言会恒真
+    /// </summary>
+    private bool InHistory(KeyMap key)
+    {
+        return _input.ActionOccur(new ActionCommand
+        {
+            keySequence = new[] {key},
+            validInFrames = 60,
+        });
+    }
+
+    /// <summary>
+    /// 地面/空中门禁：同一张表、同一个输入，状态不同结果就不同。
+    /// 【为什么滞空那段要动位置】：State 只由地面探测写，而 EditMode 里 Awake 没跑过，
+    /// `_groundMask` 还是 0——射线查不到任何层，于是走过一拍移动就必然算成滞空。
+    /// 这个前提在下面用一条断言当场钉住，不靠「大概是这样」
+    /// </summary>
+    [Test]
+    public void CancelConditionDecidesWhetherAGroundMoveCanFireInTheAir()
+    {
+        StartCustom(Waiting("Long", "GroundGate"),
+            Comeback("GroundPunch", "GroundGate", Cond("StateIs", "Grounded"), KeyMap.Punch));
+        //一直没跑过 CharacterObj.Tick，State 还是字段初始值，也就是「在地面上」
+        Assert.AreEqual(MoveState.Grounded, _character.State, "前提：还没走过移动拍，角色算站在地上");
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("GroundPunch", _action.CurrentAction.id, "站着的时候这招必须接得出来");
+
+        //重新来一遍，这次先把角色挪到五米高的半空走一拍
+        StartCustom(Waiting("Long", "GroundGate"),
+            Comeback("GroundPunch", "GroundGate", Cond("StateIs", "Grounded"), KeyMap.Punch));
+        _rig.transform.position = new Vector3(0f, 5f, 0f);
+        _character.Tick();
+        Assert.AreEqual(MoveState.Airborne, _character.State, "前提：脚下没有任何层可探，这一拍必须算滞空");
+
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("Long", _action.CurrentAction.id,
+            "空中按同一个键必须接不出地面招——这就是「空中不许接地面招」，以前框架里没有这道门禁");
+    }
+
+    /// <summary>
+    /// 「近处有一个正倒在 KnockdownGrounded 的对手」才允许的追击。
+    /// 距离只算 x 与 z：横向隔开三米、或者同侧前后错开三米，都不该算近
+    /// </summary>
+    [Test]
+    public void PursuitConditionNeedsALyingTargetWithinTheRange()
+    {
+        BuildTarget();
+        ActionInfo[] table =
+        {
+            Waiting("Long", "PursuitGate"),
+            Comeback("GroundPursuit", "PursuitGate", Cond("NearbyUnitInAction", "KnockdownGrounded", "1.2"),
+                KeyMap.Kick),
+        };
+        PutTargetIn("KnockdownGrounded", new Vector3(0.8f, 0f, 0f));
+        Assert.IsTrue(CharacterObj.AnyOtherInAction(_character, "KnockdownGrounded", 1.2f),
+            "前提：靶子确实躺在 1.2 米以内，位置 " + _rig.transform.position + " / " +
+            _targetRig.transform.position + "——不成立就说明注册表或距离算错了，跟门禁无关");
+
+        StartCustom(table);
+        Tick(KeyMap.Kick);
+        Assert.AreEqual("GroundPursuit", _action.CurrentAction.id, "零点八米外躺着一个人，追击必须成立");
+
+        StartCustom(table);
+        PutTargetIn("KnockdownGrounded", new Vector3(3f, 0f, 0f));
+        Tick(KeyMap.Kick);
+        Assert.AreEqual("Long", _action.CurrentAction.id, "横向三米已经超出 1.2 米半径，不该追");
+
+        StartCustom(table);
+        PutTargetIn("KnockdownGrounded", new Vector3(0.8f, 0f, 3f));
+        Tick(KeyMap.Kick);
+        Assert.AreEqual("Long", _action.CurrentAction.id,
+            "纵深错开三米是另一个车道的人，横版里不该算近——所以距离必须算 x 和 z 两根轴");
+
+        StartCustom(table);
+        PutTargetIn("EnemyWalk", new Vector3(0.8f, 0f, 0f));
+        Tick(KeyMap.Kick);
+        Assert.AreEqual("Long", _action.CurrentAction.id,
+            "人还站着（当前动作不是 KnockdownGrounded）就不许追击倒地技——条件查的是动作，不只是距离");
+    }
+
+    /// <summary>
+    /// 把靶子摆到"离我 offset 那么远"、并让它正处于某个动作。
+    /// 【相对位置】：靶子的绝对坐标要跟着宿主走，写死绝对值等于假设 prefab 的原点在 (0,0,0)，
+    /// 那是 prefab 的事而不是用例的事
+    /// </summary>
+    private void PutTargetIn(string actionId, Vector3 offset)
+    {
+        _targetRig.transform.position = _rig.transform.position + offset;
+        _target.action.SetAllActions(new List<ActionInfo> {Row(actionId, 60, null)}, actionId);
+    }
+
+    /// <summary>
+    /// 长按格挡：Block 每拍登记，于是「按住」就是「每一拍这条指令都成立」。
+    /// 用例把 Block 一直喂给 AddInput，看动作是不是每拍都被重新授予一次；停手之后看它是不是立刻断。
+    /// 【为什么要留着那两拍尾巴】：指令的回看窗口是 2 拍（validInFrames），
+    /// 松手后头两拍仍然能匹配到之前那两条记录，这是输入缓冲本来的行为，
+    /// 不是长按失效——把它一起断言进来，免得下次有人以为是 bug
+    /// 【采样那半边测不到】：SampleRenderFrame 要真键盘，EditMode 里 poll 不到，
+    /// 所以「Block 不吃 6 拍节流」这条只能靠代码里的位置和注释保证，是 Step 2 换 Input System 时要接回去的活
+    /// </summary>
+    [Test]
+    public void HeldBlockReGrantsTheDerivationEveryTickAndStopsAfterTheBufferRunsOut()
+    {
+        ActionInfo blocking = Comeback("Blocking", "BlockGate", new ScriptMethodInfo(), KeyMap.Block);
+        //自己能取消自己，而且不保持播放：每拍都重新成立的话，帧号就会被一直打回起点
+        blocking.beCancelledTag = new[]
+        {
+            new BeCancelledTag
+            {
+                cancelWindowFrames = new FrameRange {min = 0, max = 58},
+                cancelTag = new[] {"BlockGate"},
+                fadeOutFrames = 0,
+                priority = 0,
+            },
+        };
+        blocking.durationFrames = 60;
+        StartCustom(Waiting("Long", "BlockGate"), blocking);
+
+        Tick(KeyMap.Block);
+        Assert.AreEqual("Blocking", _action.CurrentAction.id, "第一拍按下去就该进格挡");
+        Assert.AreEqual(0, _action.CurrentFrame, "从第 0 帧开始");
+
+        for (int i = 0; i < 5; i++)
+        {
+            Tick(KeyMap.Block);
+            Assert.AreEqual(0, _action.CurrentFrame,
+                "按住的第" + (i + 2) + "拍又该被重新授予一次，帧号必须停在起点；" +
+                "它要是往上涨，就说明这一拍没登记上");
+        }
+
+        for (int i = 0; i < 6; i++) Tick();
+        Assert.AreEqual("Blocking", _action.CurrentAction.id, "松手不该切到别的动作，只是不再重新成立");
+        Assert.AreEqual(4, _action.CurrentFrame,
+            "松手六拍：头两拍还落在回看窗口里（继续被打回起点），后四拍才真的往前走");
+    }
+
+    /// <summary>
+    /// 换动作不许清掉 Block 的历史：格挡是持续状态，清了就会在派生那一刻自己泄掉。
+    /// 同一次清理里 Punch 必须被清掉——那是「洗掉非方向键」本来的用途，防止按一下就全自动连招
+    /// </summary>
+    [Test]
+    public void ActionChangeKeepsBlockHistoryButDropsPunch()
+    {
+        Tick(KeyMap.Punch);
+        Tick(KeyMap.Block);
+        Assert.IsTrue(InHistory(KeyMap.Block), "前提：刚登记的 Block 当然在历史里");
+        Assert.IsTrue(InHistory(KeyMap.Punch), "前提：刚登记的 Punch 也在历史里，否则下面的断言什么都没测到");
+
+        _input.CleanNonDirectionInputs();
+        Assert.IsTrue(InHistory(KeyMap.Block), "换动作清历史时 Block 必须留下，长按才不会断");
+        Assert.IsFalse(InHistory(KeyMap.Punch), "Punch 就该被清掉，不然全自动连招又回来了");
+    }
+
+    /// <summary>
+    /// 随机数必须只由种子和抽样次数决定。
+    /// 【为什么不用 System.Random / UnityEngine.Random】：前者算法随运行时版本变，后者靠墙钟——
+    /// 回放和以后做联网校验时全都会对不上，理由写在 Dice 的头注释里
+    /// </summary>
+    [Test]
+    public void DiceIsFullyDeterminedBySeedAndDrawCount()
+    {
+        const int draws = 120;
+        int[] first = Draw(7, draws);
+
+        Assert.AreEqual(first, Draw(7, draws), "同种子必须逐位一样，不然「同种子逐tick一致」根本无从谈起");
+        Assert.AreNotEqual(first[0], Draw(8, 1)[0], "换个种子就该换一串数");
+
+        //同一批逻辑帧换一种「每渲染帧跑几拍」的分法：30fps 每帧 2 拍、120fps 每帧 8 拍，
+        //累计到同样的 120 个逻辑帧，结果必须还是那一串。Dice 里只要掺进任何时间量这条就红
+        int[] eightPerFrame = new int[draws];
+        Dice.Seed(7);
+        for (int render = 0; render < draws / 8; render++)
+            for (int tick = 0; tick < 8; tick++)
+                eightPerFrame[render * 8 + tick] = Dice.Next(1000);
+        Assert.AreEqual(first, eightPerFrame, "抽样只认逻辑帧数，不认它被怎么切进渲染帧");
+
+        //退化点要挡住：全 0 状态的 xorshift 会永远吐 0，而「随机数怎么都是 0」这种事故最难发现
+        Dice.Seed(0);
+        bool anyNonZero = false;
+        for (int i = 0; i < 8; i++)
+            if (Dice.Next() != 0) anyNonZero = true;
+        Assert.IsTrue(anyNonZero, "seed=0 也必须正常出数，不能落在 xorshift 的退化点上");
+
+        Dice.Seed(1);
+        for (int i = 0; i < 500; i++)
+        {
+            int roll = Dice.Next(6);
+            Assert.GreaterOrEqual(roll, 0);
+            Assert.Less(roll, 6, "Next(max) 的取值范围是 [0,max)");
+        }
+        Assert.IsFalse(Dice.Chance(0), "0% 永远不成立");
+        Assert.IsTrue(Dice.Chance(100), "100% 永远成立");
+    }
+
+    private static int[] Draw(uint seed, int times)
+    {
+        Dice.Seed(seed);
+        int[] res = new int[times];
+        for (int i = 0; i < times; i++) res[i] = Dice.Next(1000);
+        return res;
+    }
+
+    /// <summary>
+    /// 认不出的门禁函数名必须当场否掉并喊出来：默认允许的话，函数名打错一个字母
+    /// 就等于悄悄把门禁拆了，而「这招在空中也能出地面招」这种手感问题没人会怀疑到表里。
+    /// 这条会真的走一次 Debug.LogError，所以要用 LogAssert 把它认下来——
+    /// 用例里"没预期的 Error"本身就是失败
+    /// </summary>
+    [Test]
+    public void UnknownCancelConditionDeniesInsteadOfAllowing()
+    {
+        LogAssert.Expect(UnityEngine.LogType.Error,
+            new System.Text.RegularExpressions.Regex("找不到取消条件函数.*"));
+        StartCustom(Waiting("Long", "TypoGate"),
+            Comeback("AnyPunch", "TypoGate", Cond("StateIsNot", "Grounded"), KeyMap.Punch));
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("Long", _action.CurrentAction.id, "写错函数名时这次派生按不成立处理");
+
+        //留空则是「没有门禁」，现有 13 条动作走的正是这条路径，行为不许有任何变化
+        StartCustom(Waiting("Long", "NoGate"), Comeback("AnyPunch", "NoGate", new ScriptMethodInfo(), KeyMap.Punch));
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("AnyPunch", _action.CurrentAction.id, "没配条件的动作行为不许有任何变化");
     }
 }

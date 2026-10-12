@@ -54,6 +54,12 @@ public static class GameData
                     if (info.defensePhase != null)
                         for (int i = 0; i < info.defensePhase.Length; i++)
                             info.defensePhase[i].tagMask = BoxTagRegistry.MaskOf(info.defensePhase[i].tag);
+                    //派生门禁的参数在开机就检查一遍：认不出函数名、半径写成"1,2"这种事
+                    //要留到玩家搓出那招时才炸，而那时候是战斗中间
+                    if (info.cancelTag != null)
+                        for (int i = 0; i < info.cancelTag.Length; i++)
+                            CancelConditionMethod.Validate(info.cancelTag[i].cancelCondition,
+                                                           info.id + " 的第 " + i + " 条 cancelTag");
                     Actions[info.id] = info;
                     _cachedAllActions.Add(info);
                 }

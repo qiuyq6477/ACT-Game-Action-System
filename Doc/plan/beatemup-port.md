@@ -71,9 +71,9 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | :--- | :--- | :--- | :--- |
 | A | 判定盒只能整体开/关，没有位移 | 表里给每个攻击盒一条轨迹（关键帧数组），`GameData.Load` 烘焙成 `Vector3[]`，`ActionController.Tick` 按整帧号写 `localPosition/localScale` | ✅ 已由切片 1.5 结掉，两处与方案不同：写在 `AttackHitBox.Tick`（判定盒拍）而不是 `ActionController.Tick`——摆位和开关必须同拍，写在动作拍会让采样读到上一拍的盒子；写的第二项是 `BoxCollider.size` 而不是 `localScale`——源工程的缩放曲线乘上精灵 size 就是盒子的本体规格，直接给 size 才是"表里的数字 = 判定的大小"，缩放留给 prefab 整体标定（1.7）。顺带闭环了 `AttackHitBox.cs:11` 那句 `TODO: 攻击盒与动画解耦` |
 | B | 没有帧事件 | `ActionInfo.cues[] = {int frame, CueKind, int bakedParam}`，求值复用窗口那套跨帧语义（`frame >= cue.frame && wasFrame < cue.frame`） | ✅ 已由切片 1.5 结掉，两处与方案不同：字段是 `{int frame, CueKind kind, string param}`，param **不烘焙成索引**——它唯一的消费者是音效表/特效表，一次字典查找不分配，而烘焙要求先把所有名字注册一遍，那是凭空多出来的一层。求值也不用区间比较而用**游标**（`_cueCursor`，换动作置 `startFrame-1`、循环回绕置 `-1`）：回绕那一拍的区间是倒着的（wasFrame=末帧、frame=0），拿"跨过没有"判断点会把这一圈的事件整段跳过，脚步声这类"每圈一次"的 cue 就是这么丢的。**cue 在逻辑 tick 里派发 ⇒ 音频/特效必须池化**（BeatEmUp 每次播放 `new GameObject + AudioSource`，照搬直接撞 0 B/帧）——派发口 `CueDispatch.Handler` 已经留好，接收者随 1.7 的素材一起落地 |
-| C | 没有"动作在什么状态下才允许"的门禁 | 新增 `Methods/CancelConditionMethod.cs` 函数表，内置 `StateIs`（地面/空中）与 `NearbyUnitInAction`（倒地追击用） | 与已有三张表 `RootMotionMethod`/`ForceMoveMethod`/`PickActionMethod` 同构，不开新概念；`NearbyUnitInAction` 走常驻注册表，不许 `FindGameObjectsWithTag` |
+| C | 没有"动作在什么状态下才允许"的门禁 | 新增 `Methods/CancelConditionMethod.cs` 函数表，内置 `StateIs`（地面/空中）与 `NearbyUnitInAction`（倒地追击用） | ✅ 已由切片 1.6 结掉。与方案的一处偏离：`param` **不在读表期烘焙成索引**——这个函数只在"标签已相交、指令已成立"之后才被问一次，一帧最多问几次，字符串比对不分配；改在读表期 `Validate` 检查参数写没写对（`float.Parse` 遇到 "1,2" 是直接抛的，而那正好在战斗中间）。函数名认不出来按**不成立**处理并喊错，默认放行等于悄悄拆门禁。与已有三张表同构，不开新概念；`NearbyUnitInAction` 走新的 `CharacterObj.Units` 常驻注册表，没用 `FindGameObjectsWithTag` |
 | D | 跨单位位置绑定（抓取） | `CharacterObj.SetHoldConstraint(victim, offset)` / `ReleaseHold()`，在 `TickAll` 移动拍之后统一应用 | BeatEmUp 是**一次性传送、之后不跟随**（`PlayerGrabEnemy.cs:17` → `EnemyGrabbed.cs:28`），它自己的 README 就列为缺陷，移植要做对 |
-| E | 没有长按语义 | 把 `Block` 当**方向键**登记（每 tick 都记、不吃 `NonDirectionInputCooldownFrames` 节流、不被换动作清理），长按 = `IsKeyHeld(Block)`，松手 = 该帧无记录 | `InputToCommand.cs:76-79` 自己承认没做 tap/hold 是偷懒；改动局限在采样与注册，判定层不动 |
+| E | 没有长按语义 | 把 `Block` 当**方向键**登记（每 tick 都记、不吃 `NonDirectionInputCooldownFrames` 节流、不被换动作清理），长按 = `IsKeyHeld(Block)`，松手 = 该帧无记录 | ✅ 已由切片 1.6 结掉。两处与方案不同：`KeyMap.Block` **不是**方向键——`IsDirectionInput` 说的是 3×3 方向语义，把它塞进去会让"没按方向"那类判定读起来全是假话，所以清理规则单独抽了 `KeepAcrossActionChange`（方向键 + Block）。另外 `SampleRenderFrame` 用 `Input.GetKey(KeyCode.LeftShift)` 而不是新配一条虚拟轴：轴要在 `ProjectSettings/InputManager` 里登记，而那份配置得重启编辑器才生效，Step 2 换新版 Input System 时它会跟其他键一起进 action map。"Block 不吃节流"这半边在 EditMode 测不到（poll 不到真键盘），代码位置与注释已标出 |
 | F | 命中相交的粒度是物理步而不是逻辑帧 | 删掉 `AttackHitBox` 的 `OnTriggerEnter/Exit`，在 `TickAll` 的 `TickBoxes` 之后、`DealWithAttacks` 之前插 `SampleOverlaps()`：每逻辑帧 `Physics.SyncTransforms()` + 按形状 `OverlapSphere/Capsule/BoxNonAlloc` 到 Awake 预分配的常驻缓冲 | ✅ 已由切片 1.3 结掉（原 `Doc/issue/hit-overlap-physics-step-granularity.md` 已删，顺带登记 `Doc/issue/hit-event-heap-alloc.md`）。角色根节点是直写 `transform.position`，而 `m_AutoSyncTransforms: 0`，所以必须先同步；`queriesHitTriggers` 默认为真，触发盒照样被查得到 |
 
 另外顺带落地 `refactor.md` 里 **Phase 3**（伤害/霸体/粗筛）与 **Phase 4**（实体与对象池，Step 2）：伤害公式要的 `AttackHitBox.damageRate`（`AttackHitBox.cs:36`）与 `BeHitBox.meat`（`BeHitBox.cs:28`，MH 式部位肉质）**两个字段早就存在但从来没被消费**，只差 `GameMain.cs:221` 那行 `//造成伤害 //todo demo里就先不做了`。
@@ -109,10 +109,10 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.3 ✅ | 命中改逻辑帧采样（F）+ `BeHitBox` layer（阵营层与距离²粗筛都记为偏离，见第八节） | **先写用例再改实现**：命中帧恰好等于表里 `[4,5]` 被跨过的帧、走开当帧立刻打不着、自己的盒子不算靶子、离开采样层查不到、每帧 0.5 米穿过不漏拍；`SampleOverlaps` 分区稳态 0 B；issue 文件与索引行已删 |
 | 1.4 ✅ | 导出工具 `Assets/Editor/AnimClipToActionTable.cs`（菜单 `Tools/ACT/导出 BeatEmUp 帧数据草稿`），把 41 条 clip 的窗口/盒子轨迹/cue 转成整数逻辑帧，产出 `beatemup-anim-dump.md` | 可疑值 0 条；命中帧集合按源工程的读法逐招对过（见第八节）；20 条编辑期用例全绿 |
 | 1.5 ✅ | 盒子轨迹（A）+ 帧事件表（B）+ cue 派发口（池化的接收者留给 1.7） | 六条新用例：cue 在该响的那一拍响且只响一次、顿挫只推迟不吞不重、循环每圈重放一次；轨迹每拍摆到表里的位置与尺寸（沿上一条、关掉就不写）、没填 track 一个数都不碰、两条表项抢同一个盒子时优先级高的说了算。`CueFire`/`BoxPose` 两个新分区稳态 0 B；编辑期用例 26/26 全绿 |
-| 1.6 | `CancelConditionMethod` 表（C）+ 长按（E）+ 种子化随机 | 用例：空中不接地面招；倒地追击只在目标处于 `KnockdownGrounded` 时成立；同种子同帧率逐 tick 一致 |
+| 1.6 ✅ | 派生门禁（C）+ 长按 Block（E）+ 种子化随机 `Dice` + 场上角色注册表 | 六条新用例：站着能接的地面招在半空接不出来；追击条件既查距离（x/z 两根轴）也查对方此刻的动作；Block 每拍登记所以按住期间每拍重新授予、松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；随机数只由种子与抽样次数决定（换帧率分法/换种子/退化点/取值范围）；函数名写错按不成立处理。32/32 全绿，稳态十一个分区 0 B |
 | 1.7 | 导入素材（连 `.meta`，保留 guid）+ 玩家整套招式表 | 逐招手感与 BeatEmUp 对拍；`GameMain.targetFrameRate` 30/60/120 三档行为一致 |
 | 1.8 | 抓取约束 + 投掷（D） | 被举者**逐 tick 跟随**（不复现一次性传送）；"扔敌人砸敌人"在解约束后仍能命中第三方 |
-| 1.9 | 伤害/HP/霸体/格挡结算 | 用例：霸体未破→掉血但不切 Hurt；`hp<=0`→Death；格挡免伤但有 blockstun 与推开 |
+| 1.9 | 伤害/HP/霸体/格挡结算（= refactor.md Phase 3）+ 命中路径的分配 | 用例：霸体未破→掉血但不切 Hurt；`hp<=0`→Death；格挡免伤但有 blockstun 与推开；`Doc/issue/hit-event-heap-alloc.md` 结掉 |
 
 ### Step 2：世界与流程
 
@@ -223,6 +223,19 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **顺带修掉三条 1.2 用例的假红**：`DepthMovesAwayFromCameraWhenFacingRight`/`DepthDoesNotMirrorWhenFacingLeft`/`SeparateLanesPushesAlongZOnlyAndIsDeterministic` 用精确相等比较"每拍位移 × 10"和"每拍加十次"，两者天然差 1 ULP（5e-7），ARM64 的 JIT 一融合乘加就翻脸——`SeparateLanes` 那条根本不经过本期任何改动，红得毫无道理。补上 `1e-6f` 容差并把"为什么必须带容差"写进注释，否则下一次假红又会当成回归去追。
 
 **验证**：编辑期用例 **26/26 全绿**（新增第 12 区六条）；Play Mode 稳态十一个分区含 `CueFire`/`BoxPose` 全部 `avg=0 max=0`，自检 1056 B。表里此刻还没有一行 `track`/`cues`——数据由 1.7 从草稿粘进去，本期只交付"表能装、运行期会读、用例钉得住"。
+
+
+### 切片 1.6 派生门禁 + 长按 + 确定性随机 · 已实施 · 2026-10
+
+三件互不相干但都属于"框架缺一条语义"的事一起做，加完之后的格局是：派生的成立条件从三条变成四条（窗口、标签、指令、**门禁**），输入有了"按住"，随机有了可复现的源。
+
+- **第四张函数表** `Methods/CancelConditionMethod.cs`，内置 `StateIs`（Grounded/Airborne/Any）与 `NearbyUnitInAction`（动作 id + 半径）。求值点插在 `ActionController.CanActionCancelCurrent` 里"标签相交 + 指令成立"之后——顺序就是成本：那条路径每拍对每个候选动作都跑，而门禁只在"真的差点要派生"时被问一次，所以参数允许留字符串（不分配、不解析出异常），烘焙成索引反而要多注册一层名字表。函数名认不出来**按不成立处理**并喊错：默认放行等于把门禁静默拆掉，而"这招在空中也能出"这种手感问题没人会怀疑到表里少了一个字母。`GameData.Load` 里加了一遍 `Validate`，为的是让 `"1,2"` 这种手滑在开机就喊，而不是等到战斗中间让 `float.Parse` 抛。
+- **门禁查"别人在干什么"必须有注册表**：`CharacterObj.Units`（一个常驻 `List`），注册点放在 `BindBoxes`——那是 1.3 就定下的"用例可以自己叫的初始化入口"，EditMode 不跑 Awake；注销在 `OnDestroy`。没有它就只能 `FindGameObjectsWithTag`，每次调用全场景扫一遍还 new 数组。列表次序 = 各角色 Awake 次序、跨运行不稳定，所以注释里写明：以后的 AI 排队与目标选择必须自己按位置或 id 排序，别拿列表次序当平局裁决。
+- **长按 Block**：`KeyMap.Block` 每拍登记（放在非方向键那段节流**之外**，否则按住期间每隔 6 拍才留一条记录，而 `IsKeyHeld` 的窗口只有一拍，长按必然被读成松手），并且换动作时不清历史。清理规则单独抽成 `KeepAcrossActionChange`（方向键 + Block），**没有**把 Block 塞进 `IsDirectionInput`：那个函数说的是 3×3 方向语义，塞进去之后"没按方向"那一类判定全变成假话。有了"每拍都登记"，长按就不需要额外的 hold 状态机——`commands=[{[Block]}]` 的动作天然每拍重新成立，用例看到的正是这个：按住期间帧号每拍被打回起点，松手后按回看窗口再续两拍（那是输入缓冲本来的行为，注释里写明了不是 bug）。
+- **`Dice`**：xorshift128，四个 uint，纯整数。为什么不复用 `System.Random`：它的算法随运行时版本变；`UnityEngine.Random` 靠墙钟。两者都会让"同种子同帧率逐 tick 一致"这条从根上谈不上，而回放与以后做联网校验靠的就是它。`Chance(int percent)` 用整数百分比而不是 `Next01() < 0.3f`：0.3 在二进制里无限循环，边界上的抽样结果依赖实现。取值范围用"乘完取高位"而不是取模+拒绝采样——后者一次判定抽走几个数取决于运气，**抽样次数**本身成了不确定源，这是本工程最不能容忍的一种岔开。种子在 `GameMain.randomSeed`，默认是常量：调手感时能一帧不差复现同一局，比每次换一种随机分布有用。
+- 顺带：`ActionController` 需要看 CharacterObj 的状态，加了 lazily 取的 `Owner`（不写 Inspector、也不在 Awake 里取，因为 EditMode 不跑 Awake，跟 `BindBoxes` 同一个道理）。
+
+**验证**：编辑期用例 **32/32 全绿**（新增第 13 区六条：空中接不出地面招、追击同时查距离与对方动作、长按每拍重新授予、清历史留 Block 掉 Punch、随机数只由种子与次数决定、函数名写错按不成立）；Play Mode 稳态十一个分区 `avg=0 max=0`。已知测不到的半边：`SampleRenderFrame` 里"Block 不吃节流"要真键盘，EditMode poll 不到，代码位置与注释已标出，Step 2 换 Input System 时一并接回去。
 
 
 ### 顺带：恢复闸门

@@ -44,8 +44,19 @@ public class GameMain : MonoBehaviour
     /// </summary>
     private Collider[] _boxBuffer;
 
+    /// <summary>
+    /// 逻辑层随机数的种子（敌兵概率格挡这类判定只准从 `Dice` 抽，见那个文件的说明）。
+    /// 默认是个常量，于是"什么都不改"的情况下每次运行抽到的都是同一串数——
+    /// 调手感时能一帧不差地复现同一局，这比每次换一种随机分布有用得多。
+    /// 想要每次不一样就随便改一个数，或者在这里换成 `(uint)System.Environment.TickCount`
+    /// </summary>
+    public uint randomSeed = Dice.DefaultSeed;
+
     void Awake()
     {
+        //随机源必须在第一个逻辑帧之前定好种子，否则头几次抽样用的还是静态初始值
+        Dice.Seed(randomSeed);
+
         //限帧必须在关垂直同步之后才生效
         if (targetFrameRate > 0)
         {

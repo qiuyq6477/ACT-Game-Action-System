@@ -4,8 +4,7 @@
 
 ## 热路径（每帧执行的代码）
 
-- 每帧路径**禁止**堆分配：不许出现 `new` 数组 / `List` / 字典字面量、`string` 拼接、值类型装箱。表里的字符串一律在 `GameData.Load()` 里烘焙成数值之后再用（例：`ActionInfo.rootMotionParam`、`AttackBoxTurnOnInfo.tagMask`）。
-- 往 `ActionInfo` 及其阶段结构体里加"运行期算出来的"字段时，必须标 `[NonSerialized]` 并在 `GameData.Load()` 里赋值：`Resources/GameData/Action.json` 是策划表，不往里塞派生字段。
+- 每帧路径**禁止**堆分配：不许出现 `new` 数组 / `List` / 字典字面量、`string` 拼接、值类型装箱。表里的字符串一律在 `GameData.Load()` 里烘焙成数值之后再用（例：`ActionInfo.rootMotionParam`、`AttackBoxTurnOnInfo.tagMask`）。往 `ActionInfo` 及其阶段结构体里加"运行期算出来的"字段时，必须标 `[NonSerialized]` 并在 `GameData.Load()` 里赋值：`Resources/GameData/Action.json` 是策划表，不往里塞派生字段。
 - `foreach` 遍历结构体数组拿到的是拷贝，改它的成员会直接编译不过（CS1654）：改表数据就先 `ActionInfo info = source;` 拷一份再改，改数组元素（数组本身是引用）就用带索引的 `for`。
 
 ## 碰撞盒标签与命中采样
@@ -26,11 +25,15 @@
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
 - 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤）。采样那一拍是静态入口 `CharacterObj.SampleOverlaps`，不是组件回调。改成别处调用的顺序就要重新想一遍谁先谁后。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
-- 改动窗口语义、动作时钟、顿挫、命中采样、盒子轨迹或帧事件，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上、第几帧打到、第几帧摆到哪、第几拍响哪条"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
+- 长按语义 = `KeyMap.Block` **每拍登记**（不吃非方向键的 6 拍节流，否则 `IsKeyHeld` 那一拍宽的窗口必然读成松手）+ **换动作不清历史**（`KeepAcrossActionChange` 单独放行，它不是方向键，别去改脏 `IsDirectionInput`）。于是"按住"就是"每拍这条指令都成立"，不需要额外的 hold 状态机。
+- 逻辑层的随机**只准**走 `Dice`（种子 `GameMain.randomSeed`，默认常量，所以不改就能复现同一串），**不许** `UnityEngine.Random`（墙钟）或 `System.Random`（算法随运行时版本变），且只能由**逻辑帧**触发——掺进任何时间量，回放和联网校验就废了。
+- 改动窗口语义、动作时钟、顿挫、命中采样、盒子轨迹、帧事件或派生门禁，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上、第几帧打到、第几帧摆到哪、第几拍响哪条"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
 - 用例里比较"累加出来的位置"和"每拍位移 × 拍数"必须带容差（`1e-6f`）：两种算法天然差 1 ULP，写死精确相等的话编译器一融合乘加就假红。
 
-## 分类索引
+## 表函数、场上查询与分类索引
 
+- 第四张函数表 `Methods/CancelConditionMethod.cs`：派生在「窗口 + 标签 + 指令」之后再过一道门禁（`StateIs` 地面/空中、`NearbyUnitInAction` 近处有谁），表里填 `CancelTag.cancelCondition = {method, param}`；**留空 = 没有门禁**，现有表项行为一字不变。函数名写错按**不成立**处理（默认放行等于悄悄拆门禁），参数在 `GameData.Load` 的 `Validate` 里检查，不留到战斗中间让 `float.Parse` 抛。
+- 查"场上有谁"只走 `CharacterObj.Units`（注册在 `BindBoxes`、注销在 `OnDestroy`），**禁** `FindGameObjectsWithTag`。列表次序就是 Awake 次序、跨运行不稳定，平局裁决必须自己按位置或 id 排。
 - `GameData.ActionsOfCatalog` 的倒排索引是对整张动作表建的，前提是所有角色共用同一份表（`GameMain` 把 `AllActions()` 的同一个 List 交给每个 `ActionController`）。角色一旦有了自己的动作子集，索引必须下移到 `ActionController`。
 
 ## 性能验证

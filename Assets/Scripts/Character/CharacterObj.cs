@@ -84,7 +84,22 @@ public class CharacterObj : MonoBehaviour
     public AttackHitBox[] AttackBoxes { get; private set; }
     public BeHitBox[] BeHitBoxes { get; private set; }
 
-    
+    /// <summary>
+    /// 场上所有角色的常驻注册表。取消条件（"近处有没有一个倒在地的敌人"）、以后的 AI 决策
+    /// 和"离我最近的目标"这类查询都从这儿走，**不许**用 `FindGameObjectsWithTag`：
+    /// 它每次调用都全场景扫一遍并 new 一个数组，热路径红线。
+    /// 【注册点在 BindBoxes】：EditMode 不跑 Awake，而 `BindBoxes` 已经是"用例可以自己叫的初始化入口"；
+    /// Add 自带去重，所以 Play Mode 里 Awake→BindBoxes 也只留一条。
+    /// 【顺序是各角色 Awake 的顺序，跨运行不稳定】：现在的消费者只问"有没有"所以无所谓，
+    /// 以后的 AI 排队、目标选择一定要自己按位置或 id 排序，别拿这个列表的次序当平局裁决
+    /// </summary>
+    private static readonly List<CharacterObj> _units = new List<CharacterObj>();
+
+    /// <summary>
+    /// 只读视图，给以后的 AI 和 HUD 用。拿到它**不许**增删——注册表只能由注册/注销改
+    /// </summary>
+    public static IReadOnlyList<CharacterObj> Units => _units;
+
     
     /// <summary>
     /// 被强制移动，最多只有一个被强制移动
@@ -183,6 +198,9 @@ public class CharacterObj : MonoBehaviour
     {
         if (AttackBoxes != null) return;
 
+        //注册表也在这里挂上：取消条件那条路径要用（见 Units 的注释），而 EditMode 不跑 Awake
+        if (!_units.Contains(this)) _units.Add(this);
+
         BeHitBox.EnsureQueryMask();
         List<AttackHitBox> attackBoxes = new List<AttackHitBox>();
         List<BeHitBox> beHitBoxes = new List<BeHitBox>();
@@ -218,6 +236,43 @@ public class CharacterObj : MonoBehaviour
         //盒子由GameMain的时钟按固定顺序刷新，所以这里要把两组盒子留在身上，免得每帧再遍历一次子节点
         AttackBoxes = attackBoxes.ToArray();
         BeHitBoxes = beHitBoxes.ToArray();
+    }
+
+    /// <summary>
+    /// 从注册表里摘掉自己。销毁是唯一的注销时机：不在 OnDisable 里摘，
+    /// 因为"暂时看不见"和"不在这局里"是两件事，被隐藏的目标仍然算对手在场（追击它的条件不该凭空失效）
+    /// </summary>
+    private void OnDestroy()
+    {
+        _units.Remove(this);
+    }
+
+    /// <summary>
+    /// 除自己以外，近处有没有一个当前动作正好是 actionId 的角色。
+    /// 【距离只算 x 与 z】：y 归地面探测管，用它做距离会把"同一个车道前后站"算成很远
+    /// 【用平方距离】：比较大小不需要开方，每拍都 sqrt 一次不值
+    /// </summary>
+    /// <param name="self">发起查询的角色，它自己不算</param>
+    /// <param name="actionId">要匹配的动作 id</param>
+    /// <param name="range">半径（米）</param>
+    /// <returns></returns>
+    public static bool AnyOtherInAction(CharacterObj self, string actionId, float range)
+    {
+        if (!self) return false;
+        Vector3 from = self.transform.position;
+        float sqrRange = range * range;
+        for (int i = 0; i < _units.Count; i++)
+        {
+            CharacterObj other = _units[i];
+            if (other == null || other == self) continue;
+            //还没绑定过的角色（比如同一拍里刚生成、Awake 没跑）不该被当成"场上的敌人"
+            if (other.action == null) continue;
+            if (other.action.CurrentAction.id != actionId) continue;
+            Vector3 d = other.transform.position - from;
+            if (d.x * d.x + d.z * d.z <= sqrRange) return true;
+        }
+
+        return false;
     }
 
     /// <summary>

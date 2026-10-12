@@ -43,7 +43,9 @@ public class InputToCommand : MonoBehaviour
     private int _nonDirectCooldownFrames = 0;
 
     //本渲染帧poll到的按键状态，逻辑帧共用它（见下面的采样与推进为什么要拆开）
-    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward;
+    //Block 用 KeyCode 而不是 Input.GetButton("Block")：虚拟按钮要在 ProjectSettings/InputManager 里配一条轴，
+    //而这份配置得编辑器启动时重读才生效。Step 2 换新版 Input System 时它会和其他键一起进 action map
+    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward, _sBlock;
 
     /// <summary>
     /// Unity的按键状态每渲染帧只poll得到一次，所以采样必须在逻辑时钟之外做。
@@ -56,6 +58,7 @@ public class InputToCommand : MonoBehaviour
 
         _sPunch = Input.GetButton("Punch");
         _sKick = Input.GetButton("Kick");
+        _sBlock = Input.GetKey(KeyCode.LeftShift);
 
         float xInput = Input.GetAxis("Horizontal");
         float yInput = Input.GetAxis("Vertical");
@@ -98,6 +101,17 @@ public class InputToCommand : MonoBehaviour
         if (controller)
         {
             bool noKey = true;
+
+            //Block 每拍都登记，而且不吃下面那个非方向键的 6 拍节流。
+            //长按要问的是"这一拍还按着吗"，节流会让按住期间每隔 6 拍才留一条记录，
+            //而按住判定的窗口只有一拍（见 IsKeyHeld），必然被读成松手——格挡就会一卡一卡地失效
+            if (_sBlock)
+            {
+                AddInput(KeyMap.Block);
+                //按着格挡不算"什么都没按"：否则 NoInput 那种"站着不动"的派生会被骗出来
+                noKey = false;
+            }
+
             //加入新的输入
             if (_nonDirectCooldownFrames <= 0)
             {
@@ -319,7 +333,7 @@ public class InputToCommand : MonoBehaviour
         int writeIndex = 0;
         for (int readIndex = 0; readIndex < list.Count; readIndex++)
         {
-            if (IsDirectionInput(list[readIndex].Key))
+            if (KeepAcrossActionChange(list[readIndex].Key))
             {
                 if (writeIndex != readIndex)
                 {
@@ -332,6 +346,20 @@ public class InputToCommand : MonoBehaviour
         {
             list.RemoveRange(writeIndex, list.Count - writeIndex);
         }
+    }
+
+    /// <summary>
+    /// 换动作时哪些按键的历史要留下。方向键必须留（搓招是看一段序列的，清空就等于把连招打断），
+    /// Block 也必须留：它表达的是"此刻正按着"这个持续状态，
+    /// 换动作就清会让长按格挡在派生的那一刻断掉，表现是"挡到一半自己泄了"
+    /// 【为什么不干脆说 Block 是方向键】：那是句假话——它不参与 3×3 的方向语义，
+    /// 也不该被 noDir 那类判定算进去；留历史是它的登记规则，不是它的分类
+    /// </summary>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    private static bool KeepAcrossActionChange(KeyMap key)
+    {
+        return IsDirectionInput(key) || key == KeyMap.Block;
     }
 
     /// <summary>
@@ -368,6 +396,11 @@ public enum KeyMap
 {
     Punch = 100,
     Kick = 101,
+    /// <summary>
+    /// 格挡键。它按"按住"用（每拍登记、不吃节流、换动作不清历史），
+    /// 所以登记规则跟方向键同一类，但它不是方向——GetKeyInput 不镜像它
+    /// </summary>
+    Block = 102,
     Backward = 4,
     UpBackward = 7,
     Up = 8,
