@@ -1,6 +1,4 @@
-﻿using UnityEngine;
-
-/// <summary>
+﻿/// <summary>
 /// 命中信息记录
 /// </summary>
 public class HitRecord
@@ -18,21 +16,21 @@ public class HitRecord
     /// </summary>
     public int CanHitTimes = 0;
     /// <summary>
-    /// 冷却多久以后才能继续打他
+    /// 冷却多少个逻辑帧以后才能继续打他
     /// </summary>
-    public float Cooldown = 0;
+    public int CooldownFrames = 0;
 
-    public HitRecord(CharacterObj cha, int phase, int canHitTimes, float cooldown)
+    public HitRecord(CharacterObj cha, int phase, int canHitTimes, int cooldownFrames)
     {
         UniqueId = cha.gameObject.GetInstanceID();
         Phase = phase;
         CanHitTimes = canHitTimes;
-        Cooldown = cooldown;
+        CooldownFrames = cooldownFrames;
     }
 
-    public void Update(float delta)
+    public void Tick()
     {
-        if (Cooldown > 0)
-            Cooldown = Mathf.Max(0, Cooldown - delta);
+        if (CooldownFrames > 0)
+            CooldownFrames--;
     }
 }

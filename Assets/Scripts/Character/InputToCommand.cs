@@ -11,9 +11,9 @@ using UnityEngine.Serialization;
 public class InputToCommand : MonoBehaviour
 {
     /// <summary>
-    /// 保持一个按键的存在时间最多这么多秒，太早的就释放掉了
+    /// 保持一个按键的记录多少个逻辑帧，太早的就释放掉了（72帧 = 1.2秒）
     /// </summary>
-    private const float RecordKeepTime = 1.2f;
+    private const int RecordKeepFrames = 72;
 
     /// <summary>
     /// 是否接受手柄输入，这个当然可以不是bool，而是接受几号手柄输入
@@ -34,34 +34,58 @@ public class InputToCommand : MonoBehaviour
     [HideInInspector] public bool inversed = false;
 
     /// <summary>
-    /// 现在的时间戳
-    /// </summary>
-    private double _timeStamp = 0;
-
-    /// <summary>
     /// 非方向输入得有个cd，不然频率太高影响连招手感
     /// 如果没有这个，非常容易出现“全自动连续攻击”，如果攻击派生动作的按键一样的话
+    /// 6个逻辑帧 = 0.09秒
     /// </summary>
-    private const float NonDirectionInputCooldown = 0.09f;
+    private const int NonDirectionInputCooldownFrames = 6;
 
-    private float _nonDirectCooldown = 0;
-    
+    private int _nonDirectCooldownFrames = 0;
+
+    //本渲染帧poll到的按键状态，逻辑帧共用它（见下面的采样与推进为什么要拆开）
+    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward;
+
     /// <summary>
+    /// Unity的按键状态每渲染帧只poll得到一次，所以采样必须在逻辑时钟之外做。
+    /// 30FPS下一个快照会被两个逻辑帧共用，120FPS下有些逻辑帧看到的还是上一个快照——
+    /// 这是引擎的上限，改成什么逻辑帧率都救不回来
+    /// </summary>
+    public void SampleRenderFrame()
+    {
+        if (!controller) return;
+
+        _sPunch = Input.GetButton("Punch");
+        _sKick = Input.GetButton("Kick");
+
+        float xInput = Input.GetAxis("Horizontal");
+        float yInput = Input.GetAxis("Vertical");
+        float deadArea = 0.2f;
+        bool xHasInput = Mathf.Abs(xInput) >= deadArea;
+        bool yHasInput = Mathf.Abs(yInput) >= deadArea;
+
+        //上下左右4个方向，每帧都走这里，所以不能是数组（原来的 new[] 就是每帧一次分配）
+        _sUp = yHasInput && yInput > 0;
+        _sDuck = yHasInput && yInput < 0;
+        _sBack = xHasInput && xInput < 0;
+        _sForward = xHasInput && xInput > 0;
+    }
+
+    /// <summary>
+    /// 把本渲染帧采到的状态登记成一个逻辑帧的输入记录
     /// 值得注意的是：
     /// 好的输入是会判断up和down的，这样才能得出是tap还是holding
     /// 但是操作并不是这个demo主要表现的内容，所以我就偷了个懒
     /// 其实也不是没有动作游戏采取这种“Turbo输入”的
     /// 没有holding和tap，用这种"Turbo输入"的结果就是一些手感会变差，比如移动，还有蓄力，但不是做不了，得凑
     /// </summary>
-    private void Update()
+    public void Tick()
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.InputUpdate);
-        float dt = Time.deltaTime;
         //开始去掉已经过期的操作记录
         int index = 0;
         while (index < _input.Count)
             //等于的时候还是保留一下，其实无所谓，就那么1帧的差别
-            if (_timeStamp - _input[index].TimeStamp > RecordKeepTime) _input.RemoveAt(index);
+            if (LogicClock.Frame - _input[index].Frame > RecordKeepFrames) _input.RemoveAt(index);
             else index++;
         
         //最新输入刷新了
@@ -71,43 +95,29 @@ public class InputToCommand : MonoBehaviour
         {
             bool noKey = true;
             //加入新的输入
-            if (_nonDirectCooldown <= 0)
+            if (_nonDirectCooldownFrames <= 0)
             {
-                if (Input.GetButton("Punch"))
+                if (_sPunch)
                 {
                     AddInput(KeyMap.Punch);
                     noKey = false;
                 }
-                if (Input.GetButton("Kick"))
+                if (_sKick)
                 {
                     AddInput(KeyMap.Kick);
                     noKey = false;
                 }
 
-                if (!noKey) _nonDirectCooldown = NonDirectionInputCooldown;
+                if (!noKey) _nonDirectCooldownFrames = NonDirectionInputCooldownFrames;
             }
             else
             {
-                _nonDirectCooldown -= dt;
+                _nonDirectCooldownFrames--;
             }
 
-            float xInput = Input.GetAxis("Horizontal");
-            float yInput = Input.GetAxis("Vertical");
-            float deadArea = 0.2f;
-            bool xHasInput = Mathf.Abs(xInput) >= deadArea;
-            bool yHasInput = Mathf.Abs(yInput) >= deadArea;
-            bool noDir = !xHasInput && !yHasInput;
+            bool up = _sUp, duck = _sDuck, back = _sBack, forward = _sForward;
+            bool noDir = !up && !duck && !back && !forward;
         
-            //上下左右4个方向，每帧都走这里，所以不能是数组（原来的 new[] 就是每帧一次分配）
-            bool up = false, duck = false, back = false, forward = false;
-            if (xHasInput)
-                if (xInput > 0) forward = true;
-                else back = true;
-
-            if (yHasInput)
-                if (yInput > 0) up = true;
-                else duck = true;
-
             //这里不能else，因为可能同一帧有8个方向的输入的，但是unity和ue的input都自作聪明的屏蔽了……
             //尽管他们有问题，但我们不能有问题
             if (up) AddInput(KeyMap.Up);
@@ -123,15 +133,12 @@ public class InputToCommand : MonoBehaviour
             if (noDir)
                 AddInput(noKey ? KeyMap.NoInput : KeyMap.NoDirection);
         }
-        
-        //计数器
-        _timeStamp += Time.deltaTime;
         GcProbe.End(GcProbe.Region.InputUpdate, gcProbe);
     }
 
     private void AddInput(KeyMap key)
     {
-        KeyInputRecord kir = new KeyInputRecord(key, _timeStamp);
+        KeyInputRecord kir = new KeyInputRecord(key, LogicClock.Frame);
         _input.Add(kir);
         _newInputs.Add(kir);
     }
@@ -144,7 +151,8 @@ public class InputToCommand : MonoBehaviour
     public bool ActionOccur(ActionCommand action)
     {
         //这里的顺序非常重要，所以一定要for而不能foreach，尽管C#尽可能保证了顺序执行，但谁知道呢？
-        double lastStamp = _timeStamp - Mathf.Max(action.validInSec, Time.deltaTime);   //最小就是上1帧
+        //回看窗口最少也是一个逻辑帧，跟表里填0是同一个意思
+        long lastFrame = LogicClock.Frame - Mathf.Max(action.validInFrames, 1);
         for (int i = 0; i < action.keySequence.Length; i++)
         {
             int idx = 0;
@@ -154,19 +162,17 @@ public class InputToCommand : MonoBehaviour
             //所以我们宁可牺牲一些性能，也要追求精准
             for (int j = 0; j < _input.Count; j++)
             {
-                if (_input[j].TimeStamp >= lastStamp && GetKeyInput(_input[j].Key) == action.keySequence[i])
+                if (_input[j].Frame >= lastFrame && GetKeyInput(_input[j].Key) == action.keySequence[i])
                 {
                     found = true;
-                    lastStamp = _input[j].TimeStamp;
+                    lastFrame = _input[j].Frame;
                     break;
                 }
             }
             if (found) continue;
             //特殊处理最后一个，最后一个可以检查_newInput里面获取
-            //这是一个策划配表和Update之间的妥协，如果是帧作为单位就不会有问题，但是update……
-            //策划作为地球人，可不知道delta是多少，每台电脑的delta都不一样，所以只能做这个补丁
-            //当然也可以做成如果检查时间都不符合的情况下，所有的指令都看new，着看你需要咋样的手感了
-            //我这里就用最后一个键可以访问new的
+            //登记输入的时候同一个记录既进_input也进_newInputs，所以这一段其实永远不会改变结论，
+            //留着只是因为它是老代码；要清理的话得连IsKeyHeld里那一段一起清
             if (i == action.keySequence.Length - 1)
             {
                 for (int j = 0; j < _newInputs.Count; j++)
@@ -174,7 +180,7 @@ public class InputToCommand : MonoBehaviour
                     if (GetKeyInput(_newInputs[j].Key) == action.keySequence[i])
                     {
                         found = true;
-                        lastStamp = _newInputs[j].TimeStamp;
+                        lastFrame = _newInputs[j].Frame;
                         break;
                     }
                 }
@@ -196,11 +202,11 @@ public class InputToCommand : MonoBehaviour
     /// <returns></returns>
     public bool IsKeyHeld(KeyMap key)
     {
-        double lastStamp = _timeStamp - Time.deltaTime; //和ActionOccur一样，最短只看上一帧
-        //输入记录是按时间戳追加的，所以倒着找，一旦早于窗口就可以直接收工
+        long lastFrame = LogicClock.Frame - 1;    //和ActionOccur一样，最短只看上一帧
+        //输入记录是按逻辑帧追加的，所以倒着找，一旦早于窗口就可以直接收工
         for (int i = _input.Count - 1; i >= 0; i--)
         {
-            if (_input[i].TimeStamp < lastStamp) break;
+            if (_input[i].Frame < lastFrame) break;
             if (GetKeyInput(_input[i].Key) == key) return true;
         }
 
@@ -371,18 +377,18 @@ public enum KeyMap
 public struct KeyInputRecord
 {
     /// <summary>
-    /// 按下的时间记录
+    /// 这个输入登记在哪个逻辑帧
     /// </summary>
-    public double TimeStamp;
+    public long Frame;
 
     /// <summary>
     /// 按下的键
     /// </summary>
     public KeyMap Key;
 
-    public KeyInputRecord(KeyMap key, double timeStamp)
+    public KeyInputRecord(KeyMap key, long frame)
     {
         Key = key;
-        TimeStamp = timeStamp;
+        Frame = frame;
     }
 }

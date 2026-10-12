@@ -25,6 +25,7 @@ public static class GcProbe
         CanAttackTargetNow,
         NatureMove,
         InputUpdate,
+        CharacterTick,
         Count
     }
 

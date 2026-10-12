@@ -81,21 +81,22 @@ public class ActionController : MonoBehaviour
     public Vector3 RootMotionMove { get; private set; } = Vector3.zero;
 
     /// <summary>
-    /// 硬直（卡帧）时间
+    /// 硬直（卡帧）还剩多少逻辑帧
     /// </summary>
-    private float _freezing = 0;
+    private int _freezeFrames = 0;
     /// <summary>
     /// 是否在硬直或者卡帧
     /// </summary>
-    public bool Freezing => _freezing > 0;
+    public bool Freezing => _freezeFrames > 0;
 
     /// <summary>
-    /// 施加微秒级卡肉顿挫（HitStop）或受击硬直（HitStun）
+    /// 施加卡肉顿挫（HitStop）或受击硬直（HitStun），单位是逻辑帧
+    /// 【目前无人调用】：Phase 3 做打击管线时才用得上，先跟着单位法则改成帧
     /// </summary>
-    /// <param name="duration">持续秒数</param>
-    public void ApplyHitStop(float duration)
+    /// <param name="durationFrames">持续多少个逻辑帧</param>
+    public void ApplyHitStop(int durationFrames)
     {
-        _freezing = Mathf.Max(_freezing, duration);
+        _freezeFrames = Mathf.Max(_freezeFrames, durationFrames);
     }
 
     /// <summary>
@@ -113,20 +114,20 @@ public class ActionController : MonoBehaviour
     private float _pec = 0;
     
     /// <summary>
-    /// 之所以我们都用Update而不是Fixed，因为我们要依赖的核心是Input和Animator
-    /// 用Update做动作游戏会有很多问题，比如跳过了可以Cancel的帧
-    /// 但是无奈，毕竟用了unity
+    /// 推进一个逻辑帧。这里不再是Unity的Update回调，而由GameMain的时钟按固定顺序调用，
+    /// 顺序是：输入 → 本方法 → 判定盒 → 命中结算 → 角色计时与移动
+    /// 动作进度目前仍然读Animator的normalizedTime（Phase 2第3步换成整型逻辑帧），
+    /// 但硬直的倒数已经跟渲染帧率无关了
     /// </summary>
-    private void Update()
+    public void Tick()
     {
-        float delta = Time.deltaTime;
         //没有动画就不会工作
         if (AllActions.Count <= 0) return;
         long gcProbe = GcProbe.Begin(GcProbe.Region.ActionControllerUpdate);
         
         //根据硬直来调整倍率
         anim.speed = Freezing ? 0 : 1;
-        if (_freezing > 0) _freezing -= delta;
+        if (_freezeFrames > 0) _freezeFrames--;
         
         //因为动作融合，所以我们优先取下一个动作的normalized当做百分比进度
         AnimatorStateInfo asInfo = anim.GetCurrentAnimatorStateInfo(0);
@@ -327,8 +328,8 @@ public class ActionController : MonoBehaviour
     /// <param name="actionId">目标actionId</param>
     /// <param name="transitionNormalized">融合百分比时间</param>
     /// <param name="fromNormalized">从百分之多少开始播放新的动画</param>
-    /// <param name="freezingAfterChange">切换动作后，硬直多少秒</param>
-    private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, float freezingAfterChange)
+    /// <param name="freezingAfterChange">切换动作后，硬直多少逻辑帧</param>
+    private void ChangeAction(string actionId, float transitionNormalized, float fromNormalized, int freezingAfterChange)
     {
         ActionInfo aInfo = GetActionById(actionId, out bool foundAction);
         if (foundAction)
@@ -346,7 +347,7 @@ public class ActionController : MonoBehaviour
                 CurrentBeCancelledTag.Add(beCancelledTag);
             }
 
-            _freezing = freezingAfterChange;
+            _freezeFrames = freezingAfterChange;
             
             ActiveBeHitBoxInfo.Clear();
             ActiveBeHitBoxMask = 0;
@@ -435,8 +436,8 @@ public class ActionController : MonoBehaviour
     /// </summary>
     /// <param name="acInfo">变换动作信息</param>
     /// <param name="forceDir">如有必要（其实就是byCatalog）得给个动作受力方向</param>
-    /// <param name="freezing">如果切换到这个动作，硬直多少秒</param>
-    public void PreorderActionByActionChangeInfo(ActionChangeInfo acInfo, ForceDirection forceDir, float freezing = 0)
+    /// <param name="freezing">如果切换到这个动作，硬直多少个逻辑帧</param>
+    public void PreorderActionByActionChangeInfo(ActionChangeInfo acInfo, ForceDirection forceDir, int freezing = 0)
     {
         switch (acInfo.changeType)
         {
@@ -487,13 +488,13 @@ public class ActionController : MonoBehaviour
     /// 加入卡帧，卡帧会叠加，但是最多不会超过一个值，并且越接近的时候增加量越少
     /// 注意，这只能是卡帧freezing，因为他会立即暂停角色动作，而受击的hitStun是在切换动作之后，切勿走这里
     /// </summary>
-    /// <param name="freezingSec"></param>
-    public void SetFreezing(float freezingSec)
+    /// <param name="freezingFrames"></param>
+    public void SetFreezing(int freezingFrames)
     {
-        if (_freezing < 0) _freezing = 0;   //清理一下
-        float maxFreezing = 0.5f;   //卡帧、硬直上限
-        float addRate = Mathf.Clamp(maxFreezing - _freezing, 0, maxFreezing) / maxFreezing;
-        _freezing += freezingSec * addRate;
+        if (_freezeFrames < 0) _freezeFrames = 0;   //清理一下
+        const int maxFreezingFrames = 30;   //卡帧、硬直上限，30个逻辑帧 = 0.5秒
+        float addRate = Mathf.Clamp(maxFreezingFrames - _freezeFrames, 0, maxFreezingFrames) / (float)maxFreezingFrames;
+        _freezeFrames += Mathf.RoundToInt(freezingFrames * addRate);
         anim.speed = Freezing ? 0 : 1;
     }
 

@@ -15,9 +15,9 @@ public class CharacterObj : MonoBehaviour
     public InputToCommand input;
 
     /// <summary>
-    /// 重量，影响到下落速度，第一秒的时候下降weight，第1-2秒的时候下降就是2*weight了，以此类推
-    /// 实际上动作游戏中是每帧增加一个重量，但是我们用的是Update，帧的概念是电影行业的，不是做游戏的
-    /// 所以我们不得不拟合一个，按照每秒作为单位来用deltaTime做拟合
+    /// 重量：每个逻辑帧给下落速度加上的量，不是米/秒²那样的加速度。
+    /// 以前用Update靠deltaTime去拟合，帧率一变下落就变（见Doc/plan/refactor.md的Phase 2），
+    /// 现在按逻辑帧累加，只在换算成位移那一处乘LogicClock.Tick——60FPS下的轨迹与改造前逐项相同
     /// </summary>
     public float weight = 4.5f;
 
@@ -59,6 +59,12 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     public List<HitRecord> HitRecords { get; private set; } = new List<HitRecord>();
 
+    /// <summary>
+    /// 身上的攻击盒与受击盒，Awake里收集好，供GameMain的时钟按固定顺序刷新
+    /// </summary>
+    public AttackHitBox[] AttackBoxes { get; private set; }
+    public BeHitBox[] BeHitBoxes { get; private set; }
+
     
     
     /// <summary>
@@ -66,7 +72,7 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     private ForceMove _forceMove = ForceMove.NoForceMove;
 
-    private bool UnderForceMove => _forceMove.TimeElapsed <= _forceMove.Data.inSec;
+    private bool UnderForceMove => _forceMove.FramesElapsed <= _forceMove.Data.inFrames;
     
     public bool Inversed
     {
@@ -85,16 +91,17 @@ public class CharacterObj : MonoBehaviour
     private bool WishToMoveBackward => input.IsKeyHeld(KeyMap.Backward);
 
     /// <summary>
-    /// 自然的移动，而非ForceMoved
+    /// 自然的移动，而非ForceMoved。返回的是这一个逻辑帧的位移
     /// </summary>
-    public Vector3 NatureMove(float delta)
+    public Vector3 NatureMove()
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.NatureMove);
+        //moveSpeed是米/秒、_curWeight是米/逻辑帧累加出来的速度，都只在算位移这一处乘Tick
         Vector3 moved = new Vector3(
-            ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * delta) :
-                WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * delta) : 0) + action.RootMotionMove.x) *
+            ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) :
+                WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) : 0) + action.RootMotionMove.x) *
             (Inversed ? -1 : 1),
-            action.RootMotionMove.y - _curWeight,   //unity的坐标系y是反过来的
+            action.RootMotionMove.y - _curWeight * LogicClock.Tick,   //unity的坐标系y是反过来的
             action.RootMotionMove.z
         );
         GcProbe.End(GcProbe.Region.NatureMove, gcProbe);
@@ -113,6 +120,8 @@ public class CharacterObj : MonoBehaviour
         }));
         
         //开始的时候初始化一下必要的Components
+        List<AttackHitBox> attackBoxes = new List<AttackHitBox>();
+        List<BeHitBox> beHitBoxes = new List<BeHitBox>();
         Transform[] transforms = GetComponentsInChildren<Transform>();
         foreach (Transform trans in transforms)
         {
@@ -122,25 +131,33 @@ public class CharacterObj : MonoBehaviour
                 ahb.master = this;
                 //顺便把Inspector上的tag换成位掩码，Awake一定早于所有Update，判定不会踩到没烘焙的盒子
                 ahb.BakeTagMask();
+                attackBoxes.Add(ahb);
             }
             BeHitBox bhb = trans.GetComponent<BeHitBox>();
             if (bhb)
             {
                 bhb.master = this;
                 bhb.BakeTagMask();
+                beHitBoxes.Add(bhb);
             }
         }
+
+        //盒子由GameMain的时钟按固定顺序刷新，所以这里要把两组盒子留在身上，免得每帧再遍历一次子节点
+        AttackBoxes = attackBoxes.ToArray();
+        BeHitBoxes = beHitBoxes.ToArray();
     }
 
-    private void Update()
+    /// <summary>
+    /// 推进一个逻辑帧：目前只有命中记录的冷却，移动和地面在GameMain的时钟里同帧另外处理
+    /// </summary>
+    public void Tick()
     {
-        float delta = Time.deltaTime;
         //以下内容只有不在硬直才会执行
         if (!action.Freezing)
         {
             //HitRecords
             foreach (HitRecord record in HitRecords)
-                record.Update(delta);
+                record.Tick();
         }
         
     }
@@ -350,11 +367,11 @@ public class CharacterObj : MonoBehaviour
         if (rec == null)
         {
             HitRecords.Add(new HitRecord(target, attackPhase, action.CurrentAction.attacks[idx].canHitSameTarget - 1,
-                action.CurrentAction.attacks[idx].hitSameTargetDelay));
+                action.CurrentAction.attacks[idx].hitSameTargetDelayFrames));
         }
         else
         {
-            rec.Cooldown = action.CurrentAction.attacks[idx].hitSameTargetDelay;
+            rec.CooldownFrames = action.CurrentAction.attacks[idx].hitSameTargetDelayFrames;
             rec.CanHitTimes -= 1;
         }
     }
@@ -377,9 +394,9 @@ public class CharacterObj : MonoBehaviour
     }
     
     /// <summary>
-    /// 这一帧的移动 todo 目前只有NatureMove，还没有Forced
+    /// 这一个逻辑帧的移动 todo 目前只有NatureMove，还没有Forced
     /// </summary>
-    public Vector3 ThisTickMove(float delta)
+    public Vector3 ThisTickMove()
     {
         //硬直时候不做移动
         if (action.Freezing) return Vector3.zero;
@@ -387,14 +404,14 @@ public class CharacterObj : MonoBehaviour
         if (UnderForceMove)
         {
             Vector3 fMove = _forceMove.MoveTween(_forceMove);
-            _forceMove.Update(delta);
+            _forceMove.Advance();
             return fMove;
         }
-        //下落重量的增幅，不应该在Update做，而是外部调用update的地方去做
-        if (_falling) _curWeight += weight * delta;
+        //下落重量按逻辑帧累加，换算成位移时才乘Tick（不在Update里做，由时钟调用的地方统一推进）
+        if (_falling) _curWeight += weight;
         else _curWeight = 0;
         //有强制位移的时候强制位移，没有的时候自然移动
-        return  NatureMove(delta);
+        return  NatureMove();
     }
 
     /// <summary>

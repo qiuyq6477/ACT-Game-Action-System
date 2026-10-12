@@ -13,9 +13,9 @@ public struct MoveInfo
     public Vector3 moveDistance;
 
     /// <summary>
-    /// 在这么多秒内完成移动
+    /// 在这多少个逻辑帧内完成移动
     /// </summary>
-    public float inSec;
+    public int inFrames;
 
     /// <summary>
     /// 移动函数，会从Methods/MoveTween中找到对应的函数，如果没有这个函数，就会按照匀速的来
@@ -26,7 +26,7 @@ public struct MoveInfo
     public static MoveInfo Zero => new MoveInfo
     {
         moveDistance = Vector3.zero,
-        inSec = 0,
+        inFrames = 0,
         tweenMethod = ""
     };
 }

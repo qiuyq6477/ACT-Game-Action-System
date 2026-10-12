@@ -12,8 +12,15 @@
 
 - 只有 `BoxTagRegistry` 允许认识标签字符串，新增标签一律走 `MaskOf`；判定处只许位与 `(a & b) != 0`，不许再比字符串。
 - 标签的位号按注册先后分配，**同一次运行内稳定、跨运行会变**（各 prefab 的 Awake 顺序不固定）：日志和断言里只打标签名，别把掩码数字当常量。
-- 盒子组件的 `TagMask` 由 `CharacterObj.Awake` 顺带烘焙（那里本来就要遍历子组件认主人），必须早于任何 Update。
+- 盒子组件的 `TagMask` 由 `CharacterObj.Awake` 顺带烘焙（那里本来就要遍历子组件认主人），必须早于第一个逻辑帧（盒子开关由 `GameMain` 的时钟刷新，已经没有各自的 Update 了）。
 - 标签总数上限 31，超了 `MaskOf` 报错并返回 0（该标签从此判定不到），加标签时看 Console。
+
+## 逻辑时钟与单位
+
+- 逻辑层的"时长"一律是 `int` 逻辑帧（`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。
+- `Time.deltaTime` 只准出现在 `GameMain` 的累加器里；`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及驱动 Animator 步进表现层。速率（`moveSpeed`、`weight`）仍然带秒量纲。
+- 五个组件（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj`）**不许**再写 Unity 的 `Update()` 回调：它们的 `Tick()` 由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动）。改成别处调用的顺序就要重新想一遍谁先谁后。
+- Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。
 
 ## 分类索引
 

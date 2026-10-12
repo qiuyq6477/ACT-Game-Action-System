@@ -8,6 +8,7 @@ using UnityEngine;
 /// 正确的做法：每个动作帧每个角色可能都会有若干攻击盒。
 /// 但是受限于Unity和UE之类的对于游戏的理解非常外行，所以给的框架不能很好的实现动作游戏
 /// 于是我们只能凑效果，就是在角色身上先绑定了攻击盒，然后在合适的时候开启或者关闭他们
+/// TODO: 攻击盒与动画解耦
 /// </summary>
 public class AttackHitBox : MonoBehaviour
 {
@@ -68,7 +69,10 @@ public class AttackHitBox : MonoBehaviour
         TagMask = BoxTagRegistry.MaskOf(tags);
     }
 
-    private void Update()
+    /// <summary>
+    /// 刷新一个逻辑帧的开启状态，由GameMain的时钟在ActionController之后、命中结算之前调用
+    /// </summary>
+    public void Tick()
     {
         Active = master && master.ShouldAttackBoxActive(TagMask);
         TempPriority = master ? master.GetAttackBoxTempPriority(TagMask) : 0;

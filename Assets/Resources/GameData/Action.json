@@ -62,7 +62,7 @@
             "commands":[
                 {
                     "keySequence":[6],
-                    "validInSec":0.01
+                    "validInFrames":1
                 }
             ],
             "inputAcceptance": [{
@@ -120,7 +120,7 @@
             "commands":[
                 {
                     "keySequence":[4],
-                    "validInSec":0
+                    "validInFrames":0
                 }
             ],
             "inputAcceptance": [{
@@ -315,7 +315,7 @@
             "commands":[
                 {
                     "keySequence":[4],
-                    "validInSec":0
+                    "validInFrames":0
                 }
             ],
             "inputAcceptance": [],
@@ -364,7 +364,7 @@
             "commands":[
                 {
                     "keySequence":[100],
-                    "validInSec":0.05
+                    "validInFrames":3
                 }
             ],
             "inputAcceptance": [],
@@ -384,13 +384,13 @@
                     "forceDir": 0,
                     "pushPower": {
                         "moveDistance": {"x": 0.1, "y": 0, "z": 0},
-                        "inSec": 0.08,
+                        "inFrames": 5,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.12,
-                    "freeze": 0.05,
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1,
+                    "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
                         "changeType":0,
                         "param":"",
@@ -446,7 +446,7 @@
             "commands":[
                 {
                     "keySequence":[100],
-                    "validInSec":0.05
+                    "validInFrames":3
                 }
             ],
             "inputAcceptance": [],
@@ -472,13 +472,13 @@
                             "而不应该依赖于程序逻辑去做到这个效果"
                         ],
                         "moveDistance": {"x": 0.1, "y": 0.2, "z": 0},
-                        "inSec": 0.12,
+                        "inFrames": 7,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.12,
-                    "freeze": 0.08,
+                    "hitStunFrames": 7,
+                    "freezeFrames": 5,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1,
+                    "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
                         "changeType":0,
                         "param":"",
@@ -551,7 +551,7 @@
             "commands":[
                 {
                     "keySequence":[101],
-                    "validInSec":0.05
+                    "validInFrames":3
                 }
             ],
             "inputAcceptance": [],
@@ -571,13 +571,13 @@
                     "forceDir": 0,
                     "pushPower": {
                         "moveDistance": {"x": 0.2, "y": 0, "z": 0},
-                        "inSec": 0.12,
+                        "inFrames": 7,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.12,
-                    "freeze": 0.05,
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1,
+                    "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
                         "changeType":0,
                         "param":"",
@@ -638,7 +638,7 @@
             "commands":[
                 {
                     "keySequence":[2,3,6,101],
-                    "validInSec":0.1
+                    "validInFrames":6
                 }
             ],
             "inputAcceptance": [],
@@ -658,13 +658,13 @@
                     "forceDir": 0,
                     "pushPower": {
                         "moveDistance": {"x": 0.2, "y": 0, "z": 0},
-                        "inSec": 0.06,
+                        "inFrames": 4,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.12,
-                    "freeze": 0.05,
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1,
+                    "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
                         "changeType":1,
                         "param":"TwinKickAutoCombo",
@@ -724,13 +724,13 @@
                     "forceDir": 0,
                     "pushPower": {
                         "moveDistance": {"x": 0.7, "y": 0, "z": 0},
-                        "inSec": 0.26,
+                        "inFrames": 16,
                         "tweenMethod": "Slowly"
                     },
-                    "hitStun": 0.12,
-                    "freeze": 0.05,
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
                     "canHitSameTarget": 1,
-                    "hitSameTargetDelay": 1,
+                    "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
                         "changeType":0,
                         "param":"",

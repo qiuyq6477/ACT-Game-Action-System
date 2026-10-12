@@ -7,15 +7,18 @@ using UnityEngine;
 public class ForceMove
 {
     public MoveInfo Data;
-    public float TimeElapsed = 0;
-    public float WasElapsed = 0;
+    /// <summary>
+    /// 已经走了多少个逻辑帧，推进只由 Advance 做（逻辑层的时长一律是 int 帧，见 LogicClock）
+    /// </summary>
+    public int FramesElapsed = 0;
+    public int WasFramesElapsed = 0;
     public Func<ForceMove, Vector3> MoveTween = _ => Vector3.zero;
 
     public static ForceMove FromData(MoveInfo data) => new ForceMove
     {
         Data = data,
-        TimeElapsed = 0,
-        WasElapsed = 0,
+        FramesElapsed = 0,
+        WasFramesElapsed = 0,
         MoveTween = ForceMoveMethod.Methods.ContainsKey(data.tweenMethod)
             ? ForceMoveMethod.Methods[data.tweenMethod]
             : _ => Vector3.zero
@@ -24,14 +27,14 @@ public class ForceMove
     public static ForceMove NoForceMove => new ForceMove
     {
         Data = new MoveInfo(),
-        WasElapsed = float.MaxValue,
-        TimeElapsed = float.MaxValue,
+        WasFramesElapsed = int.MaxValue,
+        FramesElapsed = int.MaxValue,
         MoveTween = _ => Vector3.zero
     };
 
-    public void Update(float delta)
+    public void Advance()
     {
-        WasElapsed = TimeElapsed;
-        TimeElapsed += delta;
+        WasFramesElapsed = FramesElapsed;
+        FramesElapsed++;
     }
 }
