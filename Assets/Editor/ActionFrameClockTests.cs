@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十五件事：
+/// 钉的十六件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -61,6 +61,9 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    （没挂就是死局：他不会死，这一波永远清不完）、上一波还剩一个人就不许开下一波、清完之后隔满
 ///    `framesBetweenWavesFrames` 那一拍才开、最后一波清完报 LevelCleared 且之后再也不多发一个人、
 ///    按表生成一个人要走完"认盒子 + 只拿自己那份子集 + 按表里的坐标（含纵深）站好"这三步。
+/// 16. 关卡边界与血量条（BeatEmUp 移植切片 2.3 后半）：相机在关卡两头都被夹住、区间内不干涉、
+///    关卡窄于一屏（边界算反了）时退回不夹而不是把相机按死；波次表里每一只都生在边界以内；
+///    血条按 hp 走、没挂组件是满格而不是空条、越界的数夹在 0~1、代码搭 UI 搭得出来。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -110,6 +113,8 @@ public class ActionFrameClockTests
         if (_poiseRig != null) Object.DestroyImmediate(_poiseRig);
         if (_receiverGo != null) Object.DestroyImmediate(_receiverGo);
         for (int i = 0; i < _waveRigs.Count; i++) if (_waveRigs[i] != null) Object.DestroyImmediate(_waveRigs[i]);
+        for (int i = 0; i < _hudRoots.Count; i++) if (_hudRoots[i] != null) Object.DestroyImmediate(_hudRoots[i]);
+        _hudRoots.Clear();
         _waveRigs.Clear();
         _waveUnits.Clear();
         _spawnCalls = 0;
@@ -2660,6 +2665,7 @@ public class ActionFrameClockTests
     //而"生成一个人到底要几步"交给 `GameMain.PlaceCharacter` 那条真入口自己测
 
     private readonly List<GameObject> _waveRigs = new List<GameObject>(8);
+    private readonly List<GameObject> _hudRoots = new List<GameObject>(4);
     private readonly List<CharacterObj> _waveUnits = new List<CharacterObj>(8);
     private int _spawnCalls;
 
@@ -2798,5 +2804,79 @@ public class ActionFrameClockTests
         Assert.NotNull(unit.Stats, "带着 CombatStats 才能被打死，波次才推得动");
         Assert.IsTrue(unit.Stats.TakeDamage(100000f), "一记就打死要返回致死，路由才会走 Death");
         Assert.IsTrue(unit.IsDead);
+    }
+
+    //================================ 第21区：关卡边界与血量条（切片 2.3 后半） ====================================
+    //边界是波次表里的四个数，血量条是代码搭的 UI。两片都不碰热路径，所以这里钉的是
+    //"表里的数自洽"与"数值到条子上是对的那一条边"
+
+    [Test]
+    public void CameraIsClampedAtBothEndsAndNotInvertedWhenTheLevelIsNarrow()
+    {
+        //关卡 0~30、半屏宽 4 米 → 相机中心只能在 4~26
+        Assert.AreEqual(4f, GameMain.ClampCameraX(-10f, 4f, 26f), 1e-4f, "贴着左边界走也不该把关卡外推进画面");
+        Assert.AreEqual(26f, GameMain.ClampCameraX(40f, 4f, 26f), 1e-4f, "右边界同理");
+        Assert.AreEqual(12f, GameMain.ClampCameraX(12f, 4f, 26f), 1e-4f, "区间内不干涉");
+
+        //关卡比一屏还窄时（右算出来比左还小），Clamp 会把相机钉死在 left，所以那种情况得退回不夹
+        Assert.AreEqual(40f, GameMain.ClampCameraX(40f, 26f, 4f), 1e-4f, "边界反了就不夹，而不是把相机按在某个数上");
+        Assert.AreEqual(40f, GameMain.ClampCameraX(40f, float.MinValue, float.MaxValue), 1e-4f, "没有关卡边界时原样给回");
+    }
+
+    /// <summary>
+    /// 表里的人不能出生在墙外：夹是每拍在 `CharacterObj.Move` 里做的，
+    /// 于是"生成坐标越界"表现成"那个人一出场就被弹回边界上"，看上去像移动出了 bug
+    /// </summary>
+    [Test]
+    public void EveryWaveRowSpawnsInsideTheDeclaredLevelBounds()
+    {
+        WaveTable.Load();
+        LevelRow level = WaveTable.Get("Level1");
+        Assert.IsTrue(level.HasBounds, "前提：Level1 填了边界四个数");
+
+        for (int w = 0; w < level.waves.Length; w++)
+        {
+            SpawnRow[] rows = level.waves[w].enemies;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                Assert.GreaterOrEqual(rows[i].x, level.playMinX, "第 " + (w + 1) + " 波第 " + (i + 1) + " 只生在左墙外");
+                Assert.LessOrEqual(rows[i].x, level.playMaxX, "第 " + (w + 1) + " 波第 " + (i + 1) + " 只生在右墙外");
+                Assert.GreaterOrEqual(rows[i].z, level.laneMinZ, "第 " + (w + 1) + " 波第 " + (i + 1) + " 只生在车道外");
+                Assert.LessOrEqual(rows[i].z, level.laneMaxZ);
+            }
+        }
+    }
+
+    [Test]
+    public void HudBarFillFollowsHpAndStaysFullWithoutStats()
+    {
+        BuildTarget();
+        Assert.AreEqual(1f, HudBar.FillFor(null), 1e-4f, "没挂数值组件就是满格：不装等于不参与，不该显示成空条");
+
+        GiveStats(_target, 100f, 1f, 0f);
+        Assert.AreEqual(1f, HudBar.FillFor(_target.Stats), 1e-4f);
+        _target.Stats.TakeDamage(40f);
+        Assert.AreEqual(0.6f, HudBar.FillFor(_target.Stats), 1e-4f, "掉四十血就该是六成");
+        _target.Stats.TakeDamage(1000f);
+        Assert.AreEqual(0f, HudBar.FillFor(_target.Stats), 1e-4f, "打死就是空条，不许是负的");
+    }
+
+    /// <summary>
+    /// 血条是代码搭的，所以"搭出来不炸、写两次同样的数只脏一次"要有一个冒烟用例。
+    /// 它不检查像素——那件事归 Play 模式的眼睛
+    /// </summary>
+    [Test]
+    public void HudBarBuildsFromCodeAndIgnoresAnUnchangedValue()
+    {
+        HudBar bar = HudBar.Build("ACT-Test-HpBar", new Vector2(0f, 1f), new Vector2(180f, 16f), Color.magenta);
+        Assert.NotNull(bar, "代码搭 UI 得真能搭出来（场景里没有 Canvas 时要自己建一个）");
+        _hudRoots.Add(bar.gameObject);
+
+        bar.SetValue(0.5f);
+        bar.SetValue(0.5f);           //第二次是同样的数：SetValue 里直接 return，不脏 canvas
+        bar.SetValue(-2f);            //越界的数要夹住而不是把 fillAmount 设成负的
+        Assert.AreEqual(0f, bar.Value, 1e-4f, "夹在 0~1");
+        bar.SetValue(3f);
+        Assert.AreEqual(1f, bar.Value, 1e-4f);
     }
 }

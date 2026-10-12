@@ -135,6 +135,7 @@ public class GameMain : MonoBehaviour
         if (level != null)
         {
             WarmSpawnPrefabs(level);
+            SetupLevelBounds(level);
             _waves.level = level;
             _waves.spawn = SpawnUnit;
             _waves.StartFirstWave();
@@ -152,8 +153,22 @@ public class GameMain : MonoBehaviour
 
         _boxBuffer = new Collider[64];
 
+        _playerHpBar = HudBar.Build("PlayerHpBar", new Vector2(0f, 1f), new Vector2(180f, 16f),
+            new Color(0.85f, 0.22f, 0.28f));
         //相机自己在场景里摆好的位置先记下来，LateUpdate 之后每帧只改横向那一个分量
         _camBase = usingCam.transform.position;
+        //HD-2D 那台相机的视口半宽：fov 与到角色那一列的距离决定"半屏多少米"，再乘画幅比。
+        //有了它才知道"相机中心最左/最右能到哪"，不然贴着关卡边走的时候会把边界外面推进画面
+        float toPlane = Mathf.Max(0.01f, Mathf.Abs(_camBase.z - player.transform.position.z));
+        float halfWidth = Mathf.Tan(0.5f * usingCam.fieldOfView * Mathf.Deg2Rad) * toPlane * usingCam.aspect;
+        //可走范围 = 关卡边界往里退半个视口。波次表没填那四个数就没有边界（`LevelBounds.Current` 是 null），
+        //这时 _camBounded 留着 false，LateUpdate 完全不夹——老行为
+        if (LevelBounds.Current != null)
+        {
+            _camBounded = true;
+            _camLeft = LevelBounds.Current.min.x + halfWidth;
+            _camRight = LevelBounds.Current.max.x - halfWidth;
+        }
     }
 
     private void Update()
@@ -171,6 +186,7 @@ public class GameMain : MonoBehaviour
         
         //UI简单处理
         inputText.text = player.input.InputText();
+        if (_playerHpBar != null) _playerHpBar.SetValue(HudBar.FillFor(player.Stats));
     }
 
     /// <summary>
@@ -292,6 +308,13 @@ public class GameMain : MonoBehaviour
         _minds.Add(mind);
     }
 
+    /// <summary>玩家那条血量（左上角）。开机搭一次，Update 里只在数值变了才写</summary>
+    private HudBar _playerHpBar;
+
+    /// <summary>相机横向能走的那两个数：边界 + 半个视口宽，Awake 里算一次</summary>
+    private float _camLeft, _camRight;
+    private bool _camBounded;
+
     /// <summary>波次推进的状态，给调试 UI 与以后的 HUD 看（也给了批处理探针一个不碰私有字段的口子）</summary>
     public WaveManager Waves => _waves;
 
@@ -320,12 +343,38 @@ public class GameMain : MonoBehaviour
         GcProbe.End(GcProbe.Region.BoxPose, gcProbe);
     }
 
+    /// <summary>
+    /// 建关卡边界。`LevelBounds.Current` 是它自己在 Awake 里挂上去的，
+    /// 而 `CharacterObj.Move` 认的就是这一个静态入口——所以这里只负责"有没有"和"多大"，
+    /// 夹的逻辑一处都不重复（切片 1.2 就把它接进移动了）
+    /// </summary>
+    private static void SetupLevelBounds(LevelRow level)
+    {
+        if (!level.HasBounds) return;      //没填就不建：老行为是不夹，缺省必须站在那一边
+        GameObject go = new GameObject("LevelBounds");
+        LevelBounds bounds = go.AddComponent<LevelBounds>();
+        bounds.min = new Vector2(level.playMinX, level.laneMinZ);
+        bounds.max = new Vector2(level.playMaxX, level.laneMaxZ);
+    }
+
+    /// <summary>
+    /// 相机中心的横向落点。关卡窄于一个视口时（右边界减不动）就退回原始值，
+    /// 不写这一条的话 Mathf.Clamp 拿到 left > right 会把相机钉死在 left
+    /// </summary>
+    public static float ClampCameraX(float want, float left, float right)
+    {
+        if (right <= left) return want;
+        return Mathf.Clamp(want, left, right);
+    }
+
     private void LateUpdate()
     {
         //只跟横向。高度跟着抬的话跳起来等于没跳（相机一起升），
         //纵深跟着走的话远车道的人永远和近车道一样大，HD-2D 的透视就白给了。
         //高度与纵深就用场景里摆好的那一个值，真正的跟随相机（含关卡边界推进）在 Step 2
-        usingCam.transform.position = new Vector3(_camBase.x + player.transform.position.x,
+        float follow = ClampCameraX(_camBase.x + player.transform.position.x,
+            _camBounded ? _camLeft : float.MinValue, _camBounded ? _camRight : float.MaxValue);
+        usingCam.transform.position = new Vector3(follow,
             _camBase.y + (_cueReceiver ? _cueReceiver.ShakeOffsetY : 0f), _camBase.z);
     }
 

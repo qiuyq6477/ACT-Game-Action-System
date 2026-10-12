@@ -38,6 +38,21 @@ public class LevelRow
     public int framesBetweenWavesFrames = 45;
 
     public WaveRow[] waves;
+
+    /// <summary>
+    /// 可玩区的横向边界。源工程 03_Level1 是 Left=0 / Right=30。
+    /// 【0 与 0 表示"没填"】：这时候不建 `LevelBounds`，场上的人不受夹——
+    /// demo 那一关本来就没有边界，缺省必须站在老行为那一边
+    /// </summary>
+    public float playMinX;
+    public float playMaxX;
+
+    /// <summary>车道的远近范围（z）。同样两个都是 0 就等于没填</summary>
+    public float laneMinZ;
+    public float laneMaxZ;
+
+    /// <summary>边界填了没有。没填就整套夹的逻辑都不参与</summary>
+    public bool HasBounds => playMinX != 0f || playMaxX != 0f || laneMinZ != 0f || laneMaxZ != 0f;
 }
 
 [Serializable]

@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2、2.3 前半 · 2026-10；剩相机边界推进、HUD、输入层、弹射物与道具）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2、2.3（波次 + 边界 + 血条）· 2026-10；剩输入层、弹射物与道具、视差背景与白闪、敌兵精灵）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -354,6 +354,16 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **遗留（已单独登记）**：`Doc/issue/enemy-spawn-thinks-in-ai-beat.md`——换波附近的 `EnemyThink max=2592` 与另一窗口里几处零散非零分区，一次性头部扩容与"探针在同一渲染帧打印被算进分区"两种解释还没分开；因此本期不写"波次之后仍然全部分区 0 B"这句话。
 
 **这一片没做的（原 2.3 的后半）**：关卡边界推进相机（`LevelBounds.Current` 现在还是场景里那一个静态边界，不随波右移）、HUD 血量条与伤害飘字、过关/失败流程。它们与波次无关，各自成一片。
+
+### 切片 2.3（下）关卡边界与血量条 · 已实施 · 2026-10
+
+- **边界进表**：`LevelRow` 多四个数 `playMinX/playMaxX/laneMinZ/laneMaxZ`（抄源工程 `03_Level1` 的 Left=0 / Right=30，车道 ±2.5 是我的决定，源工程没有车道这个概念）。`GameMain.SetupLevelBounds` 按这四个数**运行时**建一个 `LevelBounds`，于是切片 1.2 就接进 `CharacterObj.Move` 的那句 `Clamp` 立刻生效——夹的逻辑一处都不重复。四个数都是 0 = 没填 = 不建，demo 那一关原来就没边界，缺省站在老行为那一边。
+- **相机也跟着边界**：`Awake` 里由 `fov × 到角色那一列的距离 × aspect` 算出半个视口多少米（这台 HD-2D 相机是透视的，正交那套 `orthographicSize` 用不上），可走范围 = 边界**往里退半个视口**，不然贴着边走会把关卡外推进画面。关卡窄于一屏时右边界会算到左边界左边，`ClampCameraX` 在这种情况下退回不夹——`Mathf.Clamp` 拿到 `left > right` 会把相机钉死，这个坑由用例 `CameraIsClampedAtBothEndsAndNotInvertedWhenTheLevelIsNarrow` 钉住。
+- **血条是代码搭的**（`Presentation/HudBar`）：Canvas（场景里已有就用它，没有就建一个 ScreenSpaceOverlay + CanvasScaler）、底 `Image` + 子 `Image`（`type = Filled, fillMethod = Horizontal`）。源工程那条血量子物体是 `localScale.x = hp/max`，会把图片本身拉扁；`fillAmount` 只裁不拉伸。`SetValue` 数值没变就直接返回——写一次脏一次 canvas rebuild，每渲染帧无脑写等于每秒白白重建几十次。
+- **没挂 `CombatStats` 的人条子是满的**：`HudBar.FillFor(null) == 1`，与 `CombatPipeline`"不装组件就不参与数值"同一条立场；不然灰盒角色一出场就顶着一条空血，看起来像已经死了。
+- 波次表里每一只都生在边界**以内**由用例钉住：夹是每拍在 `Move` 里做的，越界的出生点表现成"一出场就被弹回墙上"，看上去像移动出 bug 而不是表填错。
+
+**验证**：EditMode 71/71 全绿（第21区四条：相机两头夹住 / 区间内不干涉 / 边界算反了退回不夹；表里每只在界内；血条按 hp 走且没组件是满格；代码搭 UI 搭得出来、越界的数夹在 0~1）。批处理 Play 探针：`Player(Clone)` 带着 `hp=60 atk=20 poise=20` 生成在表里那个 12.50，第一波 2 只、跟玩家保持 0.9~1.2 米、车道对齐，血条那条改动没有引入新的异常（日志里唯一一条 Exception 是 Unity 自己的 QuickSearch `SearchDatabase`，与本工程无关）。分区数字仍是上一节那两条（含 `Doc/issue/enemy-spawn-thinks-in-ai-beat.md` 登记的 `EnemyThink max=2592`，本切片没动那条路径）。
 
 ### 顺带：恢复闸门
 

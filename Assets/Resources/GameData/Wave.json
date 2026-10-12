@@ -1,8 +1,9 @@
-{
+﻿{
     "data": [
         {
             "id": "Level1",
             "说明": [
+                "playMinX/playMaxX 是可玩区的横向边界（抄源工程 03_Level1 的 Left=0 / Right=30），laneMinZ/laneMaxZ 是车道的远近范围；四个数只要有一个没填（都留 0）就不建边界，场上的人想走多远走多远——demo 那一关原来就是这个行为",
                 "第一关的波次表。一波就是「这一批敌兵」，全灭之后隔 framesBetweenWavesFrames 拍开下一波",
                 "x / z 是出生点的世界坐标（z 是纵深车道，负数靠镜头）：源工程把这些人在场景里预摆好，本工程改成运行期按表生成，为的是以后加一关只动这一份文件而不动 .unity",
                 "prefab 用名字取（Resources 底下），与源工程 Resources.Load(effectName) 同一个习惯；敌兵的精灵美术还没导进来，所以先都填 Player（demo 那只灰盒），Step 2 后面换成精灵敌兵只改这一列"
@@ -11,25 +12,61 @@
             "waves": [
                 {
                     "enemies": [
-                        { "prefab": "Player", "x": 12.5, "z": 0.0 },
-                        { "prefab": "Player", "x": 12.5, "z": 0.9 }
+                        {
+                            "prefab": "Player",
+                            "x": 12.5,
+                            "z": 0.0
+                        },
+                        {
+                            "prefab": "Player",
+                            "x": 12.5,
+                            "z": 0.9
+                        }
                     ]
                 },
                 {
                     "enemies": [
-                        { "prefab": "Player", "x": 13.5, "z": -0.9 },
-                        { "prefab": "Player", "x": 13.5, "z": 0.0 },
-                        { "prefab": "Player", "x": 15.5, "z": 0.9 }
+                        {
+                            "prefab": "Player",
+                            "x": 13.5,
+                            "z": -0.9
+                        },
+                        {
+                            "prefab": "Player",
+                            "x": 13.5,
+                            "z": 0.0
+                        },
+                        {
+                            "prefab": "Player",
+                            "x": 15.5,
+                            "z": 0.9
+                        }
                     ]
                 },
                 {
                     "enemies": [
-                        { "prefab": "Player", "x": 14.5, "z": 0.0 },
-                        { "prefab": "Player", "x": 14.5, "z": 1.2 },
-                        { "prefab": "Player", "x": 16.5, "z": -1.2 }
+                        {
+                            "prefab": "Player",
+                            "x": 14.5,
+                            "z": 0.0
+                        },
+                        {
+                            "prefab": "Player",
+                            "x": 14.5,
+                            "z": 1.2
+                        },
+                        {
+                            "prefab": "Player",
+                            "x": 16.5,
+                            "z": -1.2
+                        }
                     ]
                 }
-            ]
+            ],
+            "playMinX": 0.0,
+            "playMaxX": 30.0,
+            "laneMinZ": -2.5,
+            "laneMaxZ": 2.5
         }
     ]
 }

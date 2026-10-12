@@ -41,6 +41,8 @@
 ## 表函数、场上查询与分类索引
 
 - 第四张函数表 `Methods/CancelConditionMethod.cs`：派生在「窗口 + 标签 + 指令」之后再过一道门禁（`StateIs` 地面/空中、`NearbyUnitInCatalog` 近处有谁、`HoldingUnit` 手里有没有人），表里填 `CancelTag.cancelCondition = {method, param}`；**留空 = 没有门禁**，现有表项行为一字不变。函数名写错按**不成立**处理（默认放行等于悄悄拆门禁），参数在 `GameData.Load` 的 `Validate` 里检查，不留到战斗中间让 `float.Parse` 抛。"同一个键在不同状态下出不同招"（空手按 E 是抓取起手、举着人按 E 是投掷）**靠门禁分流，不靠 priority**：两条都是候选时同分取表里靠前的那一行，等于把出哪招交给填表顺序。"有没有人躺着"这类场上查询按 **catalog** 匹配而不按动作 id：玩家躺下是 `PlayerKnockDownGrounded`、敌兵躺下是 `BeatenFromForward`，两行 id 不同而分类同为 `Beaten`，绑 id 等于把门禁绑死在一行的名字上。
+- 场上的人由表生成，不在场景里预摆：第二份表 `Resources/GameData/Wave.json`（一关有哪几波、每波有谁、站在哪个 x 与 z、可玩区四个数）+ `WaveTable.Load`（开机一次，校验 prefab 取得到**且挂了 `CombatStats`**——不会死的兵等于这一波永远清不完）+ `WaveManager`（全灭之后隔 `framesBetweenWavesFrames` 拍开下一波）。`WaveManager.spawn` 是注入的委托，生成一个人的全部步骤只在静态真入口 `GameMain.PlaceCharacter` 里（实例化 + 认盒子 + 交子集），**用例与生产打的都是它**；全体遍历用 `GameMain._all`（`List`，第 0 个是玩家），三个静态入口 `SampleOverlaps`/`SeparateLanes`/`ApplyHolds` 收 `IReadOnlyList<CharacterObj>`。表里没填边界就不建 `LevelBounds`（老行为是不夹）。
+- 表现层的 UI 由代码搭，不手写 `.unity` 里的 RectTransform：`HudBar.Build` 一条血条只要 `Image.Type.Filled` + `fillAmount`，`SetValue` **数值没变就不写**（写一次就脏一次 canvas rebuild）。没挂 `CombatStats` 的角色条子是满的——不装组件等于不参与数值，跟结算那边同一条立场。
 - 查"场上有谁"只走 `CharacterObj.Units`（注册在 `BindBoxes`、注销在 `OnDestroy`），**禁** `FindGameObjectsWithTag`。列表次序就是 Awake 次序、跨运行不稳定，平局裁决必须自己按位置或 id 排。
 - 分类倒排索引建在 `ActionController` 上（`SetAllActions` 里随"这个角色的那份表"一起重建），**每个角色都必须填 `CharacterObj.actionSubset`**（留空 = 全表，只准出现在没有第二家招式的工程里）：demo 的拳击行和移植的玩家行共用同一批 cancel tag 字面量（两边的连招都挂 `Punch2`），全表在场时优先级高的那一家会把另一家的连招抢走，而这种错在 Console 里一点痕迹都没有。开场 id 走 `CharacterObj.defaultActionId`，没填才退回 `GameMain` 里写死的那两个。用例里"用真表"的那几条同理要按家族取子集（`ActionFrameClockTests.FamilyOf`）。
 
