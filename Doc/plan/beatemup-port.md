@@ -69,8 +69,8 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 
 | # | 缺口 | 加什么 | 为什么这样加 |
 | :--- | :--- | :--- | :--- |
-| A | 判定盒只能整体开/关，没有位移 | 表里给每个攻击盒一条轨迹（关键帧数组），`GameData.Load` 烘焙成 `Vector3[]`，`ActionController.Tick` 按整帧号写 `localPosition/localScale` | 读表期分配、运行期零分配，合红线；顺带闭环 `AttackHitBox.cs:11` 那句 `TODO: 攻击盒与动画解耦` |
-| B | 没有帧事件 | `ActionInfo.cues[] = {int frame, CueKind, int bakedParam}`，求值复用窗口那套跨帧语义（`frame >= cue.frame && wasFrame < cue.frame`） | 不新增第三种判定；字符串参数在 `GameData.Load` 烘焙成索引。**cue 在逻辑 tick 里派发 ⇒ 音频/特效必须池化**（BeatEmUp 每次播放 `new GameObject + AudioSource`，照搬直接撞 0 B/帧） |
+| A | 判定盒只能整体开/关，没有位移 | 表里给每个攻击盒一条轨迹（关键帧数组），`GameData.Load` 烘焙成 `Vector3[]`，`ActionController.Tick` 按整帧号写 `localPosition/localScale` | ✅ 已由切片 1.5 结掉，两处与方案不同：写在 `AttackHitBox.Tick`（判定盒拍）而不是 `ActionController.Tick`——摆位和开关必须同拍，写在动作拍会让采样读到上一拍的盒子；写的第二项是 `BoxCollider.size` 而不是 `localScale`——源工程的缩放曲线乘上精灵 size 就是盒子的本体规格，直接给 size 才是"表里的数字 = 判定的大小"，缩放留给 prefab 整体标定（1.7）。顺带闭环了 `AttackHitBox.cs:11` 那句 `TODO: 攻击盒与动画解耦` |
+| B | 没有帧事件 | `ActionInfo.cues[] = {int frame, CueKind, int bakedParam}`，求值复用窗口那套跨帧语义（`frame >= cue.frame && wasFrame < cue.frame`） | ✅ 已由切片 1.5 结掉，两处与方案不同：字段是 `{int frame, CueKind kind, string param}`，param **不烘焙成索引**——它唯一的消费者是音效表/特效表，一次字典查找不分配，而烘焙要求先把所有名字注册一遍，那是凭空多出来的一层。求值也不用区间比较而用**游标**（`_cueCursor`，换动作置 `startFrame-1`、循环回绕置 `-1`）：回绕那一拍的区间是倒着的（wasFrame=末帧、frame=0），拿"跨过没有"判断点会把这一圈的事件整段跳过，脚步声这类"每圈一次"的 cue 就是这么丢的。**cue 在逻辑 tick 里派发 ⇒ 音频/特效必须池化**（BeatEmUp 每次播放 `new GameObject + AudioSource`，照搬直接撞 0 B/帧）——派发口 `CueDispatch.Handler` 已经留好，接收者随 1.7 的素材一起落地 |
 | C | 没有"动作在什么状态下才允许"的门禁 | 新增 `Methods/CancelConditionMethod.cs` 函数表，内置 `StateIs`（地面/空中）与 `NearbyUnitInAction`（倒地追击用） | 与已有三张表 `RootMotionMethod`/`ForceMoveMethod`/`PickActionMethod` 同构，不开新概念；`NearbyUnitInAction` 走常驻注册表，不许 `FindGameObjectsWithTag` |
 | D | 跨单位位置绑定（抓取） | `CharacterObj.SetHoldConstraint(victim, offset)` / `ReleaseHold()`，在 `TickAll` 移动拍之后统一应用 | BeatEmUp 是**一次性传送、之后不跟随**（`PlayerGrabEnemy.cs:17` → `EnemyGrabbed.cs:28`），它自己的 README 就列为缺陷，移植要做对 |
 | E | 没有长按语义 | 把 `Block` 当**方向键**登记（每 tick 都记、不吃 `NonDirectionInputCooldownFrames` 节流、不被换动作清理），长按 = `IsKeyHeld(Block)`，松手 = 该帧无记录 | `InputToCommand.cs:76-79` 自己承认没做 tap/hold 是偷懒；改动局限在采样与注册，判定层不动 |
@@ -108,7 +108,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.2 | 轴改名 + 纵深车道：`NatureMove` 加 Z、竖轴改纵深、`GoStraight` 加可选 `param[3]`、同轨 pairwise 推挤、新建 `LevelBounds` | 新用例：`Inversed=true` 时纵深位移符号不变；13 条旧表项逐 tick 位移不变（原用例⑦须原样绿）；`NatureMove` 分区 0 B |
 | 1.3 ✅ | 命中改逻辑帧采样（F）+ `BeHitBox` layer（阵营层与距离²粗筛都记为偏离，见第八节） | **先写用例再改实现**：命中帧恰好等于表里 `[4,5]` 被跨过的帧、走开当帧立刻打不着、自己的盒子不算靶子、离开采样层查不到、每帧 0.5 米穿过不漏拍；`SampleOverlaps` 分区稳态 0 B；issue 文件与索引行已删 |
 | 1.4 ✅ | 导出工具 `Assets/Editor/AnimClipToActionTable.cs`（菜单 `Tools/ACT/导出 BeatEmUp 帧数据草稿`），把 41 条 clip 的窗口/盒子轨迹/cue 转成整数逻辑帧，产出 `beatemup-anim-dump.md` | 可疑值 0 条；命中帧集合按源工程的读法逐招对过（见第八节）；20 条编辑期用例全绿 |
-| 1.5 | 盒子轨迹（A）+ 帧事件表（B）+ 池化的 cue 派发 | cue 触发路径 GcProbe 新分区 0 B/帧 |
+| 1.5 ✅ | 盒子轨迹（A）+ 帧事件表（B）+ cue 派发口（池化的接收者留给 1.7） | 六条新用例：cue 在该响的那一拍响且只响一次、顿挫只推迟不吞不重、循环每圈重放一次；轨迹每拍摆到表里的位置与尺寸（沿上一条、关掉就不写）、没填 track 一个数都不碰、两条表项抢同一个盒子时优先级高的说了算。`CueFire`/`BoxPose` 两个新分区稳态 0 B；编辑期用例 26/26 全绿 |
 | 1.6 | `CancelConditionMethod` 表（C）+ 长按（E）+ 种子化随机 | 用例：空中不接地面招；倒地追击只在目标处于 `KnockdownGrounded` 时成立；同种子同帧率逐 tick 一致 |
 | 1.7 | 导入素材（连 `.meta`，保留 guid）+ 玩家整套招式表 | 逐招手感与 BeatEmUp 对拍；`GameMain.targetFrameRate` 30/60/120 三档行为一致 |
 | 1.8 | 抓取约束 + 投掷（D） | 被举者**逐 tick 跟随**（不复现一次性传送）；"扔敌人砸敌人"在解约束后仍能命中第三方 |
@@ -204,6 +204,25 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 同时修掉了三处"动画全是 30 帧 authored"的旧断言（`LogicClock.cs:10`、`ActionDurationDumper` 的警告文案、`refactor.md` 第 165 行）：BeatEmUp 的 clip 是 60 帧 authored，窗口可以落在任意帧。仍成立的是"两种都是 1/60 秒的整数倍，所以帧数没有取整误差"。
 
 **验证**：编辑期用例 20/20 全绿（本切片没动运行期代码）；工具产出的窗口逐招与曲线原文核过（上面四例）。
+
+
+### 切片 1.5 盒子轨迹 + 帧事件表 · 已实施 · 2026-10
+
+把"盒子这一拍在哪、多大"和"这一拍响什么"从 `.anim` 搬进表里，于是冲突 1（谁是真源）剩下的两半——位置和事件——也闭合了。三个新文件：`AttackBoxKey`（一个关键帧 = 从第几拍起 + 位置 + 尺寸，`Bake` 把稀疏关键帧摊平成两根按帧号直取的稠密数组）、`ActionCue`（`CueKind` 六个值一一对应源工程 clip 里真出现过的六个方法：PlaySFX/ShowEffect/CamShake/Footstep/AddForce/SpawnProjectile）、`CueDispatch`（一个静态委托，只允许一个消费者）。
+
+四处设计决定值得记：
+
+- **摆位写在判定盒拍，不写在动作拍**。`AttackHitBox.Tick` 里算完开关紧接着摆位，下一拍的相交采样（`Physics.SyncTransforms` + overlap）读到的就是这一拍的盒子。挪到 `ActionController.Tick` 会差一拍，而差的那一拍正好落在窄窗口上。
+- **只摆开着的盒子**。关着的盒子不参与采样，白写一次变换没有后果，但会让"本拍的相交用本拍的位置"这条语义变含混：盒子在关掉的那几帧悄悄跟着曲线飘，真有别的东西读它的位置就读到了一帧本该看不见的判定。用例专门用一个"把盒子挪到 (9,9,9) 再 Tick，位置必须还在那"来钉这条。
+- **写 `localPosition` 而不是 `position`**：面向是靠父节点 `localScale.x` 取反落地的（`FacingApply.SpriteScaleX`），局部坐标自动跟着镜像，反手的轨迹不需要任何人再乘一次符号。
+- **两条表项同一拍开启同一个盒子时，轨迹由优先级最高的那条说了算**，跟 `GetAttackBoxTempPriority` 同一个规则。取第一条的话"谁说了算"就取决于策划的填表顺序，而那种错在画面上只是"这一拳的判定短了两厘米"，查不出来。
+- **cue 用游标而不是区间比较**（`_cueCursor`）：循环回绕那一拍 `wasFrame=末帧、frame=0`，区间是倒着的，"有没有跨过第 f 拍"永远为假，每圈该响的脚步声会整段丢掉。游标在 `ChangeAction` 置 `startFrame-1`（从第 20 帧插入的招式不该把前面的挥空声重放一遍），在 `KeepAction` 回绕时置 `-1`。硬直期间 `CurrentFrame` 不前进，游标也不前进——cue 顺延到顿挫结束，不提前也不丢。
+
+导出工具随之补了三件事（1.5 的数据本来就是它产的，工具不跟着升级就等于让 1.7 手数 41 条片子）：`track` 与 `cues` 现在直接产出可以粘进 `Action.json` 的 JSON；两根曲线（位置、缩放）**在导出期按帧合并**成"这一拍的完整姿势"，因为表里只有一列位置一列尺寸，源工程某一帧只动了位置时，另一列留默认值 1 和"真的就是这个值"长得一模一样；`cue` 的方法名 → `CueKind` 用 `(int)CueKind.Sfx` 而不是写死序号，改了枚举名这里编译不过，写死则会静默把音效当特效派发。合并之后重跑，41 条片子仍然**可疑值 0**，20 条带 cue、15 条带窗口。
+
+**顺带修掉三条 1.2 用例的假红**：`DepthMovesAwayFromCameraWhenFacingRight`/`DepthDoesNotMirrorWhenFacingLeft`/`SeparateLanesPushesAlongZOnlyAndIsDeterministic` 用精确相等比较"每拍位移 × 10"和"每拍加十次"，两者天然差 1 ULP（5e-7），ARM64 的 JIT 一融合乘加就翻脸——`SeparateLanes` 那条根本不经过本期任何改动，红得毫无道理。补上 `1e-6f` 容差并把"为什么必须带容差"写进注释，否则下一次假红又会当成回归去追。
+
+**验证**：编辑期用例 **26/26 全绿**（新增第 12 区六条）；Play Mode 稳态十一个分区含 `CueFire`/`BoxPose` 全部 `avg=0 max=0`，自检 1056 B。表里此刻还没有一行 `track`/`cues`——数据由 1.7 从草稿粘进去，本期只交付"表能装、运行期会读、用例钉得住"。
 
 
 ### 顺带：恢复闸门

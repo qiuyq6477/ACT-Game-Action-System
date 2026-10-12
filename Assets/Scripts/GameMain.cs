@@ -90,7 +90,7 @@ public class GameMain : MonoBehaviour
     /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤。
     /// 以前这五家各写各的Update，谁先谁后由Unity决定，同一份代码换台机器就会差一帧。
     /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）。
-    /// 相交采样夹在判定盒与命中结算之间：盒子刚被刷新过，查到的就是"这一拍开着的那些盒"，
+    /// 相交采样夹在判定盒与命中结算之间：盒子刚被刷新过（开关和轨迹摆位都在那一拍），查到的就是"这一拍开着的那些盒"，
     /// 而它读的位置是上一拍Move()写下的，这个滞后和以前物理回调的滞后一致
     /// 同轨推挤放在最后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
     /// 地面探测算出的 groundY 与 z 无关，所以推完不用再探地
@@ -122,8 +122,10 @@ public class GameMain : MonoBehaviour
 
     private static void TickBoxes(CharacterObj c)
     {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.BoxPose);
         foreach (AttackHitBox box in c.AttackBoxes) box.Tick();
         foreach (BeHitBox box in c.BeHitBoxes) box.Tick();
+        GcProbe.End(GcProbe.Region.BoxPose, gcProbe);
     }
 
     private void LateUpdate()

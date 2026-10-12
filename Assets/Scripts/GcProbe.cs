@@ -21,11 +21,13 @@ public static class GcProbe
     {
         ActionControllerUpdate,
         CalculateBoxInfo,
+        CueFire,
         ChangeByCatalog,
         CanAttackTargetNow,
         NatureMove,
         InputUpdate,
         CharacterTick,
+        BoxPose,
         SampleOverlaps,
         LaneSeparate,
         Count

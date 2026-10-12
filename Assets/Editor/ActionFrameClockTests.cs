@@ -9,7 +9,7 @@ using UnityEngine;
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的六件事：
+/// 钉的七件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -21,10 +21,16 @@ using UnityEngine;
 ///    命中帧恰好等于表里窗口被跨过的帧、接触列表每拍清空重填、自己的盒子不算靶子、
 ///    离开采样层的盒子查不到、沿纵深快速穿过也不漏拍。
 ///    【这一组以前根本写不出来】：EditMode 不跑物理模拟，OnTriggerEnter 一次都不会来。
+/// 7. 帧事件与盒子轨迹（BeatEmUp 移植切片 1.5）：cue 在该响的那一拍响一次、顿挫只推迟不吞掉、
+///    循环每圈重放一次；有轨迹的盒子每一拍摆到表里的位置和尺寸（沿上一条、关掉就不写），
+///    没填轨迹的盒子留在 prefab 的位置上，同一盒子被两条表项开启时由优先级高的说了算。
+///    【这一组的表项是现造的】：真表里此刻还没有 track/cues，往 Action.json 塞测试行会污染策划的表。
+///    【这一组以前根本写不出来】：盒子在哪只由 .anim 曲线说了算，表管不着，用例也无从问起。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
-/// 第11区（相交采样）另外把判定盒拍和采样拍也跑起来，因为它断言的就是"打到没有"。
+/// 第11区（相交采样）另外把判定盒拍和采样拍也跑起来，因为它断言的就是"打到没有"；
+/// 第12区把判定盒拍也跑起来，因为它断言的是盒子被摆到哪。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -55,6 +61,8 @@ public class ActionFrameClockTests
     [TearDown]
     public void TearDown()
     {
+        //派发口是静态的：留着不动，下一个用例就会收到上一个角色的 cue
+        CueDispatch.Handler = null;
         if (_targetRig != null) Object.DestroyImmediate(_targetRig);
         Object.DestroyImmediate(_rig);
     }
@@ -370,7 +378,7 @@ public class ActionFrameClockTests
             if (frame > 8) Assert.AreEqual(0f, step, 0f, "走满之后不再前进");
         }
 
-        Assert.AreEqual(0.2f, walked, 1e-5f, "整条动作累计必须正好是表里的0.2米");
+        Assert.AreEqual(0.2f, walked, "整条动作累计必须正好是表里的0.2米");
         //第6帧这一步是个跳变：线性段从0起算而不是从startFrame起算。
         //这是表作者当年的写法，Phase 2 刻意原样保留，所以这里把它钉住，改动它必须是故意的
         Assert.AreEqual(6f / 38f * 0.2f, (func.Eval(6, param) - func.Eval(5, param)).x, 1e-5f);
@@ -519,8 +527,11 @@ public class ActionFrameClockTests
         StartAction("BoxingMoveForward");
         Vector3 from = _rig.transform.position;
         for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Up);
-        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕上方十拍，纵深必须走满 10×每拍位移");
-        Assert.AreEqual(from.x + 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "横向仍按原来的公式走，纵深项不该掺进去");
+        //【为什么这几条要带 1e-6 容差】：期望值是"每拍位移 × 10"，实现是"每拍加十次"，
+        //两种算法天然差最后一位（1 ULP，量级 5e-7）。这条钉的是纵深走满没走满、横向掺没掺进去，
+        //不是 IEEE 结合律——写死精确相等的话，编译器一换内联决策就假红了
+        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-6f, "按住屏幕上方十拍，纵深必须走满 10×每拍位移");
+        Assert.AreEqual(from.x + 10 * walkPerTick, _rig.transform.position.x, 1e-6f, "横向仍按原来的公式走，纵深项不该掺进去");
     }
 
     /// <summary>
@@ -540,8 +551,8 @@ public class ActionFrameClockTests
         Vector3 from = _rig.transform.position;
         //反手时物理上按的是 Backward，经 GetKeyInput 镜像成大脑血管里的"前进"，所以动作照样能自取消撑住
         for (int i = 0; i < 10; i++) TickWhole(KeyMap.Backward, KeyMap.Up);
-        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "反手时纵深不镜像，符号不能翻");
-        Assert.AreEqual(from.x - 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "反手时前进应当往 -x 走");
+        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-6f, "反手时纵深不镜像，符号不能翻");
+        Assert.AreEqual(from.x - 10 * walkPerTick, _rig.transform.position.x, 1e-6f, "反手时前进应当往 -x 走");
     }
 
     /// <summary>
@@ -555,7 +566,7 @@ public class ActionFrameClockTests
         StartAction("BoxingMoveForward");
         Vector3 from = _rig.transform.position;
         for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Duck);
-        Assert.AreEqual(from.z - 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕下方应当往镜头这侧走");
+        Assert.AreEqual(from.z - 10 * perTick, _rig.transform.position.z, 1e-6f, "按住屏幕下方应当往镜头这侧走");
     }
 
     /// <summary>
@@ -588,8 +599,8 @@ public class ActionFrameClockTests
             Assert.AreEqual(0f, func.Eval(frame, old).z, 0f, "三个参数的老写法，纵深恒为 0");
 
         RootMotionParam deep = RootMotionMethod.Bake("GoStraight", new[] { "0.2", "5", "8", "0.1" }, 38);
-        Assert.AreEqual(0.1f, func.Eval(38, deep).z, 1e-5f, "走满之后纵深应当正好是表里的 0.1 米");
-        Assert.AreEqual(func.Eval(38, deep).x * 0.5f, func.Eval(38, deep).z, 1e-5f,
+        Assert.AreEqual(0.1f, func.Eval(38, deep).z, "走满之后纵深应当正好是表里的 0.1 米");
+        Assert.AreEqual(func.Eval(38, deep).x * 0.5f, func.Eval(38, deep).z,
             "x 与 z 走同一条比例曲线：同一时刻两者的进度比例相同");
         //前摇那一拍两者都还是 0，斜向冲刺不会在起跳前偷跑
         Assert.AreEqual(0f, func.Eval(5, deep).z, 0f, "第 5 帧之前纵深不前进");
@@ -624,13 +635,13 @@ public class ActionFrameClockTests
             CharacterObj.SeparateLanes(new[] { a, b });
             Assert.AreEqual(1.5f, a.transform.position.x, 1e-6f, "推挤不许动 x");
             Assert.AreEqual(0.25f, a.transform.position.y, 1e-6f, "推挤不许动 y（高度归地面探测管）");
-            Assert.AreEqual(-2f - need * 0.5f, a.transform.position.z, 1e-5f, "数组里靠前的那个往近侧退");
-            Assert.AreEqual(-2f + need * 0.5f, b.transform.position.z, 1e-5f, "靠后的那个往远侧退");
-            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-5f, "两人正好隔开一个 need");
+            Assert.AreEqual(-2f - need * 0.5f, a.transform.position.z, "数组里靠前的那个往近侧退");
+            Assert.AreEqual(-2f + need * 0.5f, b.transform.position.z, "靠后的那个往远侧退");
+            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-6f, "两人正好隔开一个 need");
 
             //再推一次不该继续叠加
             CharacterObj.SeparateLanes(new[] { a, b });
-            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-5f, "已经隔开了就不再推");
+            Assert.AreEqual(need, b.transform.position.z - a.transform.position.z, 1e-6f, "已经隔开了就不再推");
         }
         finally
         {
@@ -839,7 +850,7 @@ public class ActionFrameClockTests
                     Mathf.Abs(1f - Mathf.Abs(scale.z)), 0.01f, "前提：拳盒所在骨骼不带缩放，半径才是世界单位");
 
         float reach = ((SphereCollider)_fistCol).radius + ((CapsuleCollider)_bodyCol).radius;
-        Assert.AreEqual(0.6f, reach, 1e-5f, "前提：接触厚度=两个半径之和");
+        Assert.AreEqual(0.6f, reach, "前提：接触厚度=两个半径之和");
 
         ActionInfo punch = Info("Punch1");
         FrameRange window = punch.attackPhase[0].inFrames[0];
@@ -879,5 +890,270 @@ public class ActionFrameClockTests
         PlaceTargetAtFistDepth(0f);
         CharacterObj.SampleOverlaps(_pair, _hitBuffer);
         Assert.IsFalse(PunchLanded(), "第5帧：盒子离开采样层就必须查不到，层掩码是查询的第一道过滤");
+    }
+
+    //==================================== 12. 帧事件与盒子轨迹（切片 1.5） ====================================
+    //
+    // 【这一区的表项是现造的】：往 Action.json 里塞测试行会污染策划的表，而且真表里此刻还没有
+    // 带 track/cues 的行。所以用例自己 new 一张 List 交给 SetAllActions（它只换引用不 Clear，
+    // 全工程共享的那份表不受影响），烘焙两步（tag→位掩码、track→稠密数组）照 GameData.Load 的做法补一遍。
+
+    private List<string> _fired;
+    private AttackHitBox _trackBox;
+    private BoxCollider _trackCol;
+    private Vector3 _trackHome = new Vector3(0.3f, 0.4f, 0f);
+
+    private static ActionCue Cue(int frame, CueKind kind)
+    {
+        return new ActionCue { frame = frame, kind = kind, param = "" };
+    }
+
+    private static FrameRange Win(int min, int max)
+    {
+        return new FrameRange { min = min, max = max };
+    }
+
+    private static AttackBoxKey Key(int frame, float x, float y, float sizeX, float sizeY)
+    {
+        return new AttackBoxKey
+        {
+            startFromFrame = frame,
+            position = new Vector3(x, y, 0f),
+            size = new Vector3(sizeX, sizeY, 0.5f),
+        };
+    }
+
+    private static AttackBoxTurnOnInfo Phase(int priority, AttackBoxKey[] track, params FrameRange[] window)
+    {
+        return new AttackBoxTurnOnInfo
+        {
+            tag = new[] { TrackTag },
+            inFrames = window,
+            priority = priority,
+            track = track,
+        };
+    }
+
+    private const string TrackTag = "TestTrack";
+
+    /// <summary>
+    /// 现造一条表项，并把运行期要用到的两样东西烘焙好（顺序照 GameData.Load）
+    /// </summary>
+    private static ActionInfo Row(string id, int durationFrames, ActionCue[] cues,
+        params AttackBoxTurnOnInfo[] phases)
+    {
+        for (int i = 0; i < phases.Length; i++)
+        {
+            phases[i].tagMask = BoxTagRegistry.MaskOf(phases[i].tag);
+            if (AttackBoxKey.Bake(phases[i].track, durationFrames, out Vector3[] pos, out Vector3[] size, id))
+            {
+                phases[i].bakedPosition = pos;
+                phases[i].bakedSize = size;
+            }
+        }
+
+        return new ActionInfo
+        {
+            id = id,
+            animKey = id,
+            durationFrames = durationFrames,
+            cues = cues ?? new ActionCue[0],
+            attackPhase = phases,
+            defensePhase = new BeHitBoxTurnOnInfo[0],
+            beCancelledTag = new BeCancelledTag[0],
+            tempBeCancelledTag = new TempBeCancelledTag[0],
+            cancelTag = new CancelTag[0],
+            commands = new ActionCommand[0],
+            inputAcceptance = new MoveInputAcceptance[0],
+            attacks = new AttackInfo[0],
+        };
+    }
+
+    /// <summary>把现造的表项灌进控制器，第一行动作立刻生效</summary>
+    private void StartCustom(params ActionInfo[] rows)
+    {
+        _action.SetAllActions(new List<ActionInfo>(rows), rows[0].id);
+    }
+
+    /// <summary>
+    /// 监听 cue：记下"哪一条"和"在哪一拍被派发"，于是时机和内容一起断言
+    /// </summary>
+    private void RecordCues()
+    {
+        _fired = new List<string>();
+        CueDispatch.Handler = (info, cue) => _fired.Add(cue.frame + "/" + info.id + "@" + _action.CurrentFrame);
+    }
+
+    /// <summary>
+    /// 现挂一只带 BoxCollider 的攻击盒。
+    /// 【为什么不用 prefab 上现成的那只】：它在骨骼上，Animator 每拍都改写骨骼的 localPosition，
+    /// "没有轨迹就不该碰变换"这条断言会被动画自己打破；这里是根节点的野儿子，动画不管它
+    /// </summary>
+    private void BuildTrackBox()
+    {
+        GameObject go = new GameObject("TestTrackBox");
+        go.transform.SetParent(_rig.transform, false);
+        go.transform.localPosition = _trackHome;
+        _trackCol = go.AddComponent<BoxCollider>();
+        _trackCol.size = Vector3.one;
+        _trackBox = go.AddComponent<AttackHitBox>();
+        _trackBox.master = _character;
+        _trackBox.tags = new[] { TrackTag };
+        _trackBox.BakeTagMask();
+        _trackBox.BindCollider(_trackCol);
+    }
+
+    /// <summary>走一拍：动作拍 + 判定盒拍（顺序照 GameMain.TickAll 的第三拍）</summary>
+    private void TickBox()
+    {
+        Tick();
+        _trackBox.Tick();
+    }
+
+    [Test]
+    public void CuesFireOnTheTickTheirFrameIsReachedAndNeverTwice()
+    {
+        RecordCues();
+        StartCustom(Row("CueTest", 10, new[]
+        {
+            Cue(0, CueKind.Sfx), Cue(3, CueKind.Effect), Cue(7, CueKind.CameraShake),
+        }));
+
+        for (int frame = 1; frame <= 10; frame++)
+        {
+            Tick();
+            Assert.AreEqual(frame, _action.CurrentFrame, "前提：这一拍时钟确实走到了 " + frame);
+        }
+
+        //"@后面的数"就是派发那一拍的帧号：cue 落在哪一拍就该在那一拍响，
+        //第0拍的 cue 在 CF=1 那拍响——跟窗口 [0,x] 实际生效的第一拍是同一个时机
+        Assert.AreEqual(new[] { "0/CueTest@1", "3/CueTest@3", "7/CueTest@7" }, _fired.ToArray(),
+            "三条 cue 必须各自只响一次、响在该响的那一拍");
+    }
+
+    /// <summary>
+    /// 卡肉的三拍里 cue 一条都不响，顿挫结束的第一拍补上——
+    /// 既不提前（挥空声抢在卡肉之前响会削掉打击感），也不丢（丢了就是少个声音，查不到）
+    /// </summary>
+    [Test]
+    public void HitstopDelaysCuesInsteadOfDroppingOrDoublingThem()
+    {
+        RecordCues();
+        StartCustom(Row("CueFreeze", 20, new[] { Cue(3, CueKind.Sfx) }));
+        Tick();
+        Assert.AreEqual(1, _action.CurrentFrame);
+
+        _action.ApplyHitStop(3);
+        for (int i = 0; i < 3; i++)
+        {
+            Tick();
+            Assert.AreEqual(1, _action.CurrentFrame, "顿挫的第" + (i + 1) + "拍时钟不该前进");
+        }
+        Assert.IsEmpty(_fired, "硬直期间一条 cue 都不该派发");
+
+        Tick();
+        Assert.AreEqual(2, _action.CurrentFrame, "三拍硬直用完，这一拍恢复推进");
+        Assert.IsEmpty(_fired, "时钟还没跨过第3拍，不该响");
+
+        Tick();
+        Assert.AreEqual(new[] { "3/CueFreeze@3" }, _fired.ToArray(), "顿挫结束后第一拍就该把欠的那条补上");
+        for (int i = 0; i < 5; i++) Tick();
+        Assert.AreEqual(1, _fired.Count, "补过一次之后不能再重复");
+    }
+
+    /// <summary>
+    /// 循环动作每圈把 cue 重放一次、且只一次。
+    /// 【为什么单独立一条】：回绕那一拍的 wasFrame/frame 是倒着的（末帧 → 0），
+    /// 拿窗口那套跨区间比较判断"有没有跨过这一拍"会整条跳过，跑步脚步声就是这么丢的
+    /// </summary>
+    [Test]
+    public void LoopingActionReplaysEachCueOncePerLap()
+    {
+        RecordCues();
+        ActionInfo loop = Row("CueLoop", 4, new[] { Cue(0, CueKind.Footstep), Cue(2, CueKind.Footstep) });
+        loop.autoNextActionId = "CueLoop";
+        loop.keepPlayingAnim = true;
+        StartCustom(loop);
+
+        for (int i = 0; i < 8; i++) Tick();
+
+        Assert.AreEqual(new[]
+        {
+            "0/CueLoop@1", "2/CueLoop@2",     //第一圈
+            "0/CueLoop@1", "2/CueLoop@2",     //第二圈，回绕后重新数
+        }, _fired.ToArray(), "八拍正好两圈，每圈两条 cue 各响一次");
+    }
+
+    /// <summary>
+    /// 有轨迹的盒子每一拍被摆到表里指定的位置和尺寸：窗口开着才动，没走到下一条关键帧就沿用上一条，
+    /// 关掉的那一拍一个数都不写。
+    /// 【这条以前根本不存在】：盒子在哪只由 .anim 曲线决定，表里管不着，
+    /// 于是"这一拳在哪一帧打到谁"有一半真源在动画里——改动画就悄悄改了判定
+    /// </summary>
+    [Test]
+    public void TrackPosesTheBoxOnEveryFrameTheWindowIsOpen()
+    {
+        BuildTrackBox();
+        StartCustom(Row("Track1", 10, null,
+            Phase(0, new[] { Key(2, 0.5f, 0.5f, 1f, 1f), Key(4, 1.5f, 0.2f, 2f, 0.5f) }, Win(2, 3))));
+
+        TickBox();
+        Assert.AreEqual(_trackHome, _trackBox.transform.localPosition,
+            "第1拍窗口还没开，盒子必须留在 prefab 的位置上");
+
+        TickBox();
+        Assert.AreEqual(new Vector3(0.5f, 0.5f, 0f), _trackBox.transform.localPosition, "第2拍用第一条关键帧");
+        Assert.AreEqual(new Vector3(1f, 1f, 0.5f), _trackCol.size, "尺寸同样来自表");
+
+        TickBox();
+        Assert.AreEqual(new Vector3(0.5f, 0.5f, 0f), _trackBox.transform.localPosition,
+            "第3拍没有新的关键帧，要沿用上一条（constant 曲线就是这个语义）");
+
+        TickBox();
+        Assert.AreEqual(new Vector3(1.5f, 0.2f, 0f), _trackBox.transform.localPosition, "第4拍换第二条");
+        Assert.AreEqual(new Vector3(2f, 0.5f, 0.5f), _trackCol.size, "第二条关键帧把尺寸一起换了");
+        Assert.IsTrue(_trackBox.Active, "前提：第4拍还在窗口里（生效 = min..max+1）");
+
+        TickBox();
+        Assert.IsFalse(_trackBox.Active, "第5拍窗口关了");
+        //故意把盒子挪到一个谁都不在的值上：如果关掉还在写轨迹，它会被拽回第4拍的位置
+        _trackBox.transform.localPosition = new Vector3(9f, 9f, 9f);
+        _trackBox.Tick();
+        Assert.AreEqual(new Vector3(9f, 9f, 9f), _trackBox.transform.localPosition,
+            "关着的盒子不许被轨迹摆位：否则读它位置的东西会看到一帧本该看不见的判定");
+    }
+
+    /// <summary>
+    /// 表项不填 track 就是"盒子不动"，本工程原有的做法一个字节都不变
+    /// </summary>
+    [Test]
+    public void PhaseWithoutTrackLeavesTheBoxWhereThePrefabPutIt()
+    {
+        BuildTrackBox();
+        StartCustom(Row("Track0", 6, null, Phase(0, null, Win(1, 3))));
+
+        for (int i = 0; i < 3; i++) TickBox();
+        Assert.IsTrue(_trackBox.Active, "前提：这一拍盒子是开着的，否则下面那条断言什么都没测到");
+        Assert.AreEqual(_trackHome, _trackBox.transform.localPosition, "没填轨迹就一个数都不该写");
+        Assert.AreEqual(Vector3.one, _trackCol.size, "尺寸也不该被默认的零值糊上去");
+    }
+
+    /// <summary>
+    /// 两条表项同一拍开启同一个盒子时，轨迹由优先级高的那条说了算——
+    /// 跟 GetAttackBoxTempPriority 同一个规则。取第一条的话"谁说了算"就取决于策划的填表顺序
+    /// </summary>
+    [Test]
+    public void HighestPriorityPhaseOwnsTheBoxPose()
+    {
+        BuildTrackBox();
+        StartCustom(Row("Track2", 8, null,
+            Phase(1, new[] { Key(1, 0.1f, 0.1f, 1f, 1f) }, Win(1, 4)),
+            Phase(9, new[] { Key(1, 0.9f, 0.2f, 3f, 1f) }, Win(1, 4))));
+
+        TickBox();
+        TickBox();
+        Assert.AreEqual(new Vector3(0.9f, 0.2f, 0f), _trackBox.transform.localPosition,
+            "高优先级那条排在数组第二位也得它说了算");
+        Assert.AreEqual(new Vector3(3f, 1f, 0.5f), _trackCol.size, "尺寸同样跟着高优先级那条");
     }
 }

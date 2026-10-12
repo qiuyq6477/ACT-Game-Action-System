@@ -89,8 +89,10 @@ public static class AnimClipToActionTable
 
     private class Cue
     {
-        public int frame;         //已经换算成本工程的 1-based
-        public string text;
+        public int frame;         //恒等映射：clip 的第 f 帧就是本工程的第 f 拍（0-based，跟窗口的 min 同一个基准）
+        public string func;       //源工程 AnimationEvent 的方法名
+        public string param;      //它的 data 字段，没有就是空串
+        public string text;       //给人看的那一行
     }
 
     /// <summary>.anim 里一个曲线块：曲线挂在哪、控哪个属性、关键帧是什么</summary>
@@ -117,9 +119,14 @@ public static class AnimClipToActionTable
         public int sampleRate;
         public readonly List<Span> windows = new List<Span>();
         public readonly List<Span> enabledWindows = new List<Span>();
-        public readonly List<int> trackFrames = new List<int>();
+        public readonly List<int> posFrames = new List<int>();
         public readonly List<Vector3> positions = new List<Vector3>();
+        public readonly List<int> scaleFrames = new List<int>();
         public readonly List<Vector3> scales = new List<Vector3>();
+        /// <summary>两根曲线并起来的完整轨迹（升序帧号 + 每帧的位置与世界尺寸），见 MergeTrack</summary>
+        public readonly List<int> trackFrames = new List<int>();
+        public readonly List<Vector3> trackPositions = new List<Vector3>();
+        public readonly List<Vector3> trackSizes = new List<Vector3>();
         public readonly List<Cue> cues = new List<Cue>();
         public readonly List<string> suspects = new List<string>();
         public readonly List<string> notes = new List<string>();
@@ -143,7 +150,12 @@ public static class AnimClipToActionTable
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
             AnimationClip loaded = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
-            if (loaded != null) clips.Add(Parse(path, loaded));
+            if (loaded == null) continue;
+            Clip c = Parse(path, loaded);
+            //先并进轨迹再检查：Check 要按「这一拍的完整姿势」判断越界，而曲线是两根分开读的
+            MergeTrack(c, box);
+            Check(c);
+            clips.Add(c);
         }
         clips.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
 
@@ -198,7 +210,6 @@ public static class AnimClipToActionTable
             c.suspects.Add("片长离 1/60 秒有零头（" + c.exactFrames.ToString("0.###") + " 帧），" +
                            "durationFrames 是取整出来的，每个窗口都会跟着偏一点");
 
-        Check(c);
         return c;
     }
 
@@ -308,10 +319,13 @@ public static class AnimClipToActionTable
 
     private static Cue MakeCue(float time, string func, string data)
     {
+        string param = string.IsNullOrEmpty(data) || data == "None" ? "" : data;
         return new Cue
         {
             frame = Frame(time),           //恒等映射：clip 的第 f 帧就是本工程的第 f 拍
-            text = func + (string.IsNullOrEmpty(data) || data == "None" ? "" : "(" + data + ")")
+            func = func,
+            param = param,
+            text = func + (param.Length == 0 ? "" : "(" + param + ")")
         };
     }
 
@@ -403,25 +417,85 @@ public static class AnimClipToActionTable
     }
 
     /// <summary>
-    /// 位置与缩放并进同一套帧号，两个数组按下标一一对应，读草稿的人才对得上。
-    /// 只动过其中一根时另一根在该帧留默认值——空着（0 或 1,1,1）比编一个数诚实，
-    /// 切片 1.5 落地时按「没有关键帧就沿用上一条」处理
+    /// 一根曲线的关键帧按帧号插进它自己那一根里（帧号本来就是升序，用二分找位置）。
+    /// 【位置与缩放分开存】：源工程某一帧只动了位置、没动缩放，直接并成一条会把缩放写成默认值 1，
+    /// 而 constant 曲线在那一拍其实是沿用上一条关键帧的——所以先各存各的，再由 MergeTrack 合
     /// </summary>
     private static void AddTrack(Clip c, Block b, bool isPosition)
     {
+        List<int> frames = isPosition ? c.posFrames : c.scaleFrames;
+        List<Vector3> values = isPosition ? c.positions : c.scales;
         for (int i = 0; i < b.keys.Count; i++)
         {
-            int frame = b.keys[i].frame;
-            int slot = c.trackFrames.IndexOf(frame);
-            if (slot < 0)
+            int at = frames.BinarySearch(b.keys[i].frame);
+            if (at >= 0)
             {
-                c.trackFrames.Add(frame);
-                c.positions.Add(Vector3.zero);
-                c.scales.Add(Vector3.one);
-                slot = c.trackFrames.Count - 1;
+                values[at] = b.keys[i].value;
+                continue;
             }
-            if (isPosition) c.positions[slot] = b.keys[i].value;
-            else c.scales[slot] = b.keys[i].value;
+            frames.Insert(~at, b.keys[i].frame);
+            values.Insert(~at, b.keys[i].value);
+        }
+    }
+
+    /// <summary>
+    /// 两根曲线并成「这一拍的完整姿势」：每一拍的位置 = 位置曲线上不超过这一拍的最后一条关键帧，
+    /// 尺寸 = 缩放曲线同法的值 × 精灵 size（源工程是 SpriteRenderer，本工程换成 BoxCollider 的 size），
+    /// 厚度取 DepthThickness（源工程用一条 0.5 米的 z 距离卡纵深）。
+    /// 一根曲线都没动过的帧就不出现在轨迹里——表里那条 attackPhase 留空 track，盒子待在 prefab 的位置上。
+    /// 【为什么在导出期合而不是让运行期各读各的曲线】：表里只有一列 position 一列 size，
+    /// 缺的那一半在表里跟"真的就是这个值"长得一模一样，读表的人分不出来
+    /// </summary>
+    private static void MergeTrack(Clip c, BoxSpec box)
+    {
+        foreach (int f in c.posFrames)
+            if (!c.trackFrames.Contains(f)) c.trackFrames.Add(f);
+        foreach (int f in c.scaleFrames)
+            if (!c.trackFrames.Contains(f)) c.trackFrames.Add(f);
+        c.trackFrames.Sort();
+        if (c.trackFrames.Count == 0) return;
+
+        if (!box.found)
+            c.notes.Add("读不到源预制体的精灵规格，这条的轨迹尺寸给不出来（草稿里是 0，抄进表前要先补 size）");
+
+        int pi = 0;
+        int si = 0;
+        Vector3 pos = box.position;
+        Vector3 scale = box.scale;
+        for (int i = 0; i < c.trackFrames.Count; i++)
+        {
+            int f = c.trackFrames[i];
+            while (pi < c.posFrames.Count && c.posFrames[pi] <= f)
+            {
+                pos = c.positions[pi];
+                pi++;
+            }
+            while (si < c.scaleFrames.Count && c.scaleFrames[si] <= f)
+            {
+                scale = c.scales[si];
+                si++;
+            }
+            c.trackPositions.Add(pos);
+            c.trackSizes.Add(new Vector3(scale.x * box.size.x, scale.y * box.size.y, DepthThickness));
+        }
+    }
+
+    /// <summary>
+    /// 源工程 AnimationEvent 的方法名 → 本工程的 CueKind。
+    /// 【照枚举本身取值而不是写死序号】：改了枚举名这里就编译不过，序号写死则会静默把音效当特效派发。
+    /// 认不出来的由 Check 点名，绝不悄悄给个 0
+    /// </summary>
+    private static bool CueKindOf(string func, out CueKind kind)
+    {
+        switch (func)
+        {
+            case "PlaySFX": kind = CueKind.Sfx; return true;
+            case "ShowEffect": kind = CueKind.Effect; return true;
+            case "CamShake": kind = CueKind.CameraShake; return true;
+            case "Footstep": kind = CueKind.Footstep; return true;
+            case "AddForce": kind = CueKind.Force; return true;
+            case "SpawnProjectile": kind = CueKind.Projectile; return true;
+            default: kind = default(CueKind); return false;
         }
     }
 
@@ -453,13 +527,22 @@ public static class AnimClipToActionTable
                                " 帧：盒子可能开着但看不见，或者反过来");
 
         foreach (Cue cue in c.cues)
+        {
             if (cue.frame > c.durationFrames)
+            {
                 c.suspects.Add("cue " + cue.text + " 落在第 " + cue.frame + " 拍，已经超出片长 " +
                                c.durationFrames + " 拍，跑不到");
+                continue;
+            }
+            //认不出的方法名进了表就是一条没人派发的空行，静默丢掉等于声音凭空少一下
+            if (!CueKindOf(cue.func, out CueKind _))
+                c.suspects.Add("cue 调的 " + cue.text + " 不在 CueKind 的对应表里：这条抄进表也派发不到，" +
+                               "要么在 CueKind 和 CueDispatch 的消费端补一种，要么确认源工程这个方法本来就没实现");
+        }
 
         foreach (int f in c.trackFrames)
-            if (f + 1 > c.durationFrames)
-                c.suspects.Add("盒子轨迹在第 " + (f + 1) + " 帧有关键帧，超出片长 " + c.durationFrames + " 帧");
+            if (f > c.durationFrames)
+                c.suspects.Add("盒子轨迹在第 " + f + " 拍有关键帧，超出片长 " + c.durationFrames + " 帧");
 
         if (c.windows.Count > 1)
             c.suspects.Add("一条片子里有 " + c.windows.Count + " 段独立窗口：源工程只有一只盒子反复开关。" +
@@ -591,7 +674,7 @@ public static class AnimClipToActionTable
                   "本工程第 n 拍同样摆第 n 帧、同样在这一拍结算命中。\n\n");
         sb.Append("## 源工程的判定盒规格\n\n");
         sb.Append("源工程全场只有一只 `HitBox`，每招靠 clip 里的位置和缩放曲线把它挪到拳头或脚上——");
-        sb.Append("这就是本工程要加「盒子轨迹」（切片 1.5）的原因。常驻规格：\n");
+        sb.Append("这就是本工程要加「盒子轨迹」（切片 1.5 已落地：表里的 `attackPhase[].track`）的原因。常驻规格：\n");
         if (box.found)
         {
             Vector3 world = new Vector3(box.size.x * box.scale.x, box.size.y * box.scale.y, DepthThickness);
@@ -604,6 +687,12 @@ public static class AnimClipToActionTable
         }
         else sb.Append("- 没读到（源预制体不在 `").Append(SourcePrefabRelative).Append("`），尺寸栏空着\n");
         sb.Append("\n");
+
+        sb.Append("## cue 的 kind 对照（`ActionCue.kind` 就是 `CueKind` 的序号）\n\n");
+        sb.Append("0=Sfx（PlaySFX） 1=Effect（ShowEffect） 2=CameraShake（CamShake） ")
+          .Append("3=Footstep（Footstep） 4=Force（AddForce） 5=Projectile（SpawnProjectile）\n\n");
+        sb.Append("派发在逻辑帧里（`ActionController.CalculateCues`），硬直那几拍不响、顿挫结束后补上；")
+          .Append("消费端必须池化——源工程每响一次就 `new GameObject + AudioSource`，照搬就撞热路径 0 分配的红线。\n\n");
     }
 
     private static void Section(StringBuilder sb, Clip c)
@@ -629,13 +718,12 @@ public static class AnimClipToActionTable
 
         if (c.trackFrames.Count > 0)
         {
-            sb.Append("- 盒子轨迹（局部位置，本工程的拍号）：");
+            sb.Append("- 盒子轨迹（每拍的完整姿势，拍号与窗口的 min 同一个基准）：\n");
             for (int i = 0; i < c.trackFrames.Count; i++)
-                sb.Append("第").Append(c.trackFrames[i] + 1).Append("拍 ").Append(Fmt(c.positions[i])).Append("  ");
-            sb.Append("\n- 盒子缩放：");
-            for (int i = 0; i < c.trackFrames.Count; i++)
-                sb.Append("第").Append(c.trackFrames[i] + 1).Append("拍 ").Append(Fmt(c.scales[i])).Append("  ");
-            sb.Append("（世界 size = 这个 × 精灵规格）\n");
+                sb.Append("  第").Append(c.trackFrames[i]).Append("拍 位置 ").Append(Fmt(c.trackPositions[i]))
+                  .Append(" 尺寸 ").Append(Fmt(c.trackSizes[i])).Append("\n");
+            sb.Append("  尺寸 = 那一帧的缩放曲线 × 精灵 size，厚度固定 ").Append(DepthThickness)
+              .Append(" 米；没动过的帧不出现在轨迹里，表里就不填 track\n");
         }
 
         if (c.cues.Count > 0)
@@ -646,12 +734,33 @@ public static class AnimClipToActionTable
             sb.Append("  派发都得走池化（切片 1.5）：源工程每个事件都 `new GameObject + AudioSource`，照搬就撞热路径 0 分配的红线\n");
         }
 
-        if (c.windows.Count > 0)
+        if (c.windows.Count > 0 || c.cues.Count > 0)
         {
-            sb.Append("- 可以直接抄进表里的片段（tag 是占位名 `").Append(DraftTag)
-              .Append("`，1.7 要按部位拆开）：\n\n```\n\"attackPhase\": [{ \"inFrames\": [")
-              .Append(PasteRanges(c)).Append(" ], \"tag\": [\"").Append(DraftTag)
-              .Append("\"], \"attackPhase\": 0, \"priority\": 0 }]\n```\n");
+            sb.Append("- 可以直接抄进表里的片段（");
+            if (c.windows.Count > 0)
+                sb.Append("tag 是占位名 `").Append(DraftTag).Append("`，1.7 要按部位拆开；");
+            sb.Append("`kind` 是 `CueKind` 的序号，见文件头的对照表）：\n\n```\n");
+            if (c.windows.Count > 0)
+            {
+                sb.Append("\"attackPhase\": [{ \"inFrames\": [").Append(PasteRanges(c))
+                  .Append("], \"tag\": [\"").Append(DraftTag)
+                  .Append("\"], \"attackPhase\": 0, \"priority\": 0");
+                if (c.trackFrames.Count > 0)
+                {
+                    sb.Append(", \"track\": [");
+                    for (int i = 0; i < c.trackFrames.Count; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        sb.Append("{\"startFromFrame\": ").Append(c.trackFrames[i])
+                          .Append(", \"position\": ").Append(JsonVec(c.trackPositions[i]))
+                          .Append(", \"size\": ").Append(JsonVec(c.trackSizes[i])).Append("}");
+                    }
+                    sb.Append(']');
+                }
+                sb.Append(" }]\n");
+            }
+            if (c.cues.Count > 0) sb.Append("\"cues\": [").Append(PasteCues(c)).Append("]\n");
+            sb.Append("```\n");
         }
 
         Suspects(sb, c);
@@ -680,6 +789,27 @@ public static class AnimClipToActionTable
             outs.Add("{\"min\": " + min + ", \"max\": " + max + "}");
         }
         return string.Join(", ", outs);
+    }
+
+    private static string PasteCues(Clip c)
+    {
+        List<string> outs = new List<string>();
+        foreach (Cue cue in c.cues)
+        {
+            //认不出的方法名写成 -1 而不是硬套一个种类：Check 已经点过名，这里只负责不骗人
+            CueKind kind;
+            int number = CueKindOf(cue.func, out kind) ? (int) kind : -1;
+            outs.Add("{\"frame\": " + cue.frame + ", \"kind\": " + number +
+                     ", \"param\": \"" + cue.param + "\"}");
+        }
+        return string.Join(", ", outs);
+    }
+
+    /// <summary>JsonUtility 认的 Vector3 写法就是三个数，别拿 Fmt 那种给人看的括号糊上去</summary>
+    private static string JsonVec(Vector3 v)
+    {
+        return "{\"x\": " + v.x.ToString("0.####") + ", \"y\": " + v.y.ToString("0.####") +
+               ", \"z\": " + v.z.ToString("0.####") + "}";
     }
 
     private static void Suspects(StringBuilder sb, Clip c)

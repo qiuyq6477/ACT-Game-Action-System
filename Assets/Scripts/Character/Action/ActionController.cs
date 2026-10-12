@@ -67,6 +67,12 @@ public class ActionController : MonoBehaviour
     private RootMotionParam _rootMotionParam = new RootMotionParam();
 
     /// <summary>
+    /// 当前动作的帧事件发到第几拍了（见 CalculateCues）。
+    /// 换动作时置成 startFrame - 1，循环回绕时置成 -1，于是"发过的不再发、跳过的下一拍补上"
+    /// </summary>
+    private int _cueCursor = -1;
+
+    /// <summary>
     /// 当前激活的攻击盒tag，合成一个位掩码（每个tag占 BoxTagRegistry 里的一位）
     /// 这算是一个内存换芯片，就是我先每帧算好了储存下来哪些框开启
     /// </summary>
@@ -158,6 +164,9 @@ public class ActionController : MonoBehaviour
         
         //算一下攻击盒跟受击盒
         CalculateBoxInfo(_wasFrame, CurrentFrame);
+
+        //帧事件（音效/特效/震镜头/弹射物）：源工程写在 .anim 的 AnimationEvent 里，这里按拍派发
+        CalculateCues();
         
         //移动输入接受
         CalculateInputAcceptance(_wasFrame, CurrentFrame);
@@ -295,6 +304,33 @@ public class ActionController : MonoBehaviour
     }
 
     /// <summary>
+    /// 帧事件派发：时钟跨过第几拍，就把落在其中的 cue 交出去一次。
+    /// 【为什么用游标而不是窗口那套 wasFrame/frame 比较】：cue 是一个"点"不是一段"区间"，
+    /// 套区间语义就得给每条造一个 min==max 的 FrameRange；而循环动作回绕的那一拍区间是倒着的
+    /// （wasFrame=末帧、frame=0），点会被整个跳过——脚步声这种"每循环响一次"的 cue 就这样丢了。
+    /// 游标跟着回绕复位，循环一次就正好响一次。
+    /// 【硬直期间不响】：卡肉的那几拍 CurrentFrame 不前进，游标也不前进，cue 顺延到顿挫结束。
+    /// 这是刻意的：挥空的声音抢在卡肉之前响会削掉打击感，而顿挫本来就是"表现层的时间被冻住"
+    /// </summary>
+    private void CalculateCues()
+    {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.CueFire);
+        ActionCue[] cues = CurrentAction.cues;
+        if (cues != null)
+        {
+            for (int i = 0; i < cues.Length; i++)
+            {
+                ActionCue cue = cues[i];
+                if (cue.frame > _cueCursor && cue.frame <= CurrentFrame)
+                    CueDispatch.Fire(CurrentAction, cue);
+            }
+        }
+
+        _cueCursor = CurrentFrame;
+        GcProbe.End(GcProbe.Region.CueFire, gcProbe);
+    }
+
+    /// <summary>
     /// 在当前的情况下，是否能Cancel掉CurrentAction
     /// </summary>
     /// <param name="action">动画</param>
@@ -393,6 +429,9 @@ public class ActionController : MonoBehaviour
             }
             
             _wasFrame = CurrentFrame = startFrame;
+            //cue 游标停在起点的前一拍：从 startFrame 起（含）的每一条都还没发过，
+            //而 startFrame 之前的不补发——从第20帧插入的招式不该把前面的挥空声重放一遍
+            _cueCursor = startFrame - 1;
             //顺便修一下面向。落地方式交给角色身上的 FacingApply：
             //3D 模型是绕 Y 转 90/270，精灵则是 localScale.x 取反——写死欧拉角的话精灵会侧对镜头变成一条线
             if (_facing) _facing.Apply(command.inversed);
@@ -414,6 +453,9 @@ public class ActionController : MonoBehaviour
         {
             anim.CrossFade(CurrentAction.animKey, 0, 0, 0);
             CurrentFrame = 0;
+            //游标跟着回绕：下一拍要经历区间[末帧, 1]，倒着走没法用比较判断跨过了谁，
+            //而循环的动作正是靠这一步才能每一圈都把手上的 cue 重放一次（比如跑步的脚步声）
+            _cueCursor = -1;
         }
             
     }

@@ -125,6 +125,13 @@ public struct ActionInfo
     public AttackBoxTurnOnInfo[] attackPhase;
 
     /// <summary>
+    /// 这个动作的帧事件（源工程写在 .anim 里的 AnimationEvent）：第几拍响什么。
+    /// 由导出工具从 clip 的事件表里带出来，运行期在 ActionController 的逻辑帧里派发（见 CueDispatch），
+    /// 于是"第 7 帧的挥空声"第一次变成可 diff、可被用例钉住的数据。留空就是这个动作没有事件
+    /// </summary>
+    public ActionCue[] cues;
+
+    /// <summary>
     /// 受击框开关信息，
     /// 若有2个阶段重叠，那么战斗中的信息取哪个？
     /// 首先会看受击框属于哪个信息的，如果受击框同时被多个重叠的阶段开启

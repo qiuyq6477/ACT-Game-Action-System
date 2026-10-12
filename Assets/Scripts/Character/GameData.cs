@@ -41,7 +41,16 @@ public static class GameData
                     //盒子的tag烘焙成位掩码；阶段数组本身是引用类型，按下标改元素就改到了共享的那份表
                     if (info.attackPhase != null)
                         for (int i = 0; i < info.attackPhase.Length; i++)
+                        {
                             info.attackPhase[i].tagMask = BoxTagRegistry.MaskOf(info.attackPhase[i].tag);
+                            //轨迹同样在这里摊平成按帧号直取的数组：热路径只剩一次数组下标
+                            if (AttackBoxKey.Bake(info.attackPhase[i].track, info.durationFrames,
+                                    out Vector3[] pose, out Vector3[] size, info.id))
+                            {
+                                info.attackPhase[i].bakedPosition = pose;
+                                info.attackPhase[i].bakedSize = size;
+                            }
+                        }
                     if (info.defensePhase != null)
                         for (int i = 0; i < info.defensePhase.Length; i++)
                             info.defensePhase[i].tagMask = BoxTagRegistry.MaskOf(info.defensePhase[i].tag);

@@ -392,6 +392,39 @@ public class CharacterObj : MonoBehaviour
     }
 
     /// <summary>
+    /// 攻击盒这一拍该摆在哪、摆多大：从当前动作里开着这个盒子的攻击阶段读烘焙好的轨迹。
+    /// 【false = 别动这个盒子】：要么没有表项开启它，要么开启它的表项没填轨迹（本工程原有的做法，
+    /// 盒子就待在 prefab 里摆好的位置上）。
+    /// 【多个阶段同时开启同一个盒子时取优先级最高的那条】，跟 GetAttackBoxTempPriority 同一个规则——
+    /// 取第一条会让"哪条表项说了算"取决于策划的填表顺序，那是查不出来的错
+    /// </summary>
+    /// <param name="boxMask">攻击盒的tag掩码</param>
+    /// <param name="position">该摆的局部位置</param>
+    /// <param name="size">该摆的局部尺寸</param>
+    /// <returns></returns>
+    public bool TryGetAttackBoxPose(int boxMask, out Vector3 position, out Vector3 size)
+    {
+        position = Vector3.zero;
+        size = Vector3.zero;
+        bool found = false;
+        int best = 0;
+        foreach (AttackBoxTurnOnInfo info in action.ActiveAttackBoxInfo)
+        {
+            if ((info.tagMask & boxMask) == 0 || info.bakedPosition == null) continue;
+            if (found && info.priority <= best) continue;
+
+            //帧号要夹住：没有 autoNext 的动作会一路数过 durationFrames，而轨迹数组只到那一帧
+            int frame = Mathf.Clamp(action.CurrentFrame, 0, info.bakedPosition.Length - 1);
+            position = info.bakedPosition[frame];
+            size = info.bakedSize[frame];
+            best = info.priority;
+            found = true;
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// 追加一条攻击框命中受击框的信息
     /// 这里可不管框active与否
     /// </summary>

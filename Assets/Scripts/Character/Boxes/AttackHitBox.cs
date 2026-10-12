@@ -81,18 +81,51 @@ public class AttackHitBox : MonoBehaviour
     /// </summary>
     private static bool _bufferOverflowLogged;
 
+    /// <summary>
+    /// 形状跟轨迹尺寸不匹配也只喊一声，理由跟缓冲区溢出一样
+    /// </summary>
+    private bool _sizeIgnoredLogged;
+
     public void BindCollider(Collider col)
     {
         _collider = col;
     }
 
     /// <summary>
-    /// 刷新一个逻辑帧的开启状态，由GameMain的时钟在ActionController之后、命中结算之前调用
+    /// 刷新一个逻辑帧的开启状态和本帧该摆的姿势，由GameMain的时钟在ActionController之后、
+    /// 相交采样之前调用（顺序很重要：采样用的必须就是这一拍的位置）
     /// </summary>
     public void Tick()
     {
         Active = master && master.ShouldAttackBoxActive(TagMask);
         TempPriority = master ? master.GetAttackBoxTempPriority(TagMask) : 0;
+        ApplyTrackPose();
+    }
+
+    /// <summary>
+    /// 表里带了轨迹的盒子，这一拍被摆到轨迹上的位置、撑成轨迹上的尺寸（源工程用 .anim 曲线干这件事，
+    /// 本工程把它搬进表里，见 `AttackBoxTurnOnInfo.track`）。没有轨迹的表项一个数都不碰。
+    /// 【只动开着的盒子】：关着的盒子不参与采样，白写一次变换没有后果，但会让
+    /// "本拍的相交用本拍的位置"这条语义变含混——盒子在关掉的那几帧悄悄跟着曲线飘，
+    /// 真有别的东西读它的位置时就读到了一帧本该看不见的判定
+    /// 【写 localPosition 而不是 position】：面向是靠父节点 localScale.x 取反落地的（FacingApply），
+    /// 局部坐标自动跟着镜像，反手的轨迹不需要任何人再乘一次符号
+    /// </summary>
+    private void ApplyTrackPose()
+    {
+        if (!Active || !master) return;
+        if (!master.TryGetAttackBoxPose(TagMask, out Vector3 position, out Vector3 size)) return;
+
+        transform.localPosition = position;
+        BoxCollider box = _collider as BoxCollider;
+        if (box) box.size = size;
+        else if (!_sizeIgnoredLogged)
+        {
+            //矩形盒子配成 Sphere 的话，轨迹的长短方向会被半径吞掉，判定悄悄变成球——必须喊
+            _sizeIgnoredLogged = true;
+            Debug.LogError(name + " 的表项带了轨迹尺寸，但它挂的不是 BoxCollider，尺寸被忽略。" +
+                           "导出工具给的是矩形，请把碰撞体换成 BoxCollider");
+        }
     }
 
     /// <summary>

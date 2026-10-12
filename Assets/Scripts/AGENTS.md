@@ -10,23 +10,24 @@
 
 ## 碰撞盒标签与命中采样
 
-- 只有 `BoxTagRegistry` 允许认识标签字符串，新增标签一律走 `MaskOf`；判定处只许位与 `(a & b) != 0`，不许再比字符串。
+- 只有 `BoxTagRegistry` 允许认识标签字符串，新增标签一律走 `MaskOf`；判定处只许位与 `(a & b) != 0`，不许再比字符串。标签总数上限 31，超了 `MaskOf` 报错并返回 0（该标签从此判定不到），加标签时看 Console。
 - 标签的位号按注册先后分配，**同一次运行内稳定、跨运行会变**（各 prefab 的 Awake 顺序不固定）：日志和断言里只打标签名，别把掩码数字当常量。
 - 盒子组件的绑定（认主人、烘焙 `TagMask`、认领碰撞体、建好每拍重填的接触列表）全在 `CharacterObj.BindBoxes()` 里，`Awake` 只调它：**EditMode 下 `Instantiate` 不触发 `Awake`**，用例要直接叫 `BindBoxes`。绑定必须早于第一个逻辑帧。
 - 命中相交给逻辑帧主动采样（`GameMain.TickAll` 的相交采样拍 → `CharacterObj.SampleOverlaps` → `AttackHitBox.SampleTouches`），**不许**再写 `OnTriggerEnter/Exit`：物理回调按 `Fixed Timestep 0.02`（50Hz）触发，与 60Hz 的逻辑帧错频，窄窗口静默打空、大位移直接穿过（`Doc/plan/beatemup-port.md` 切片 1.3）。
 - 相交查询只认 `BeHitBox` 层（`BeHitBox.QueryMask`），受击盒必须归到这一层，否则采不到；地面与道具因此天然被排除在缓冲区之外。
-- 标签总数上限 31，超了 `MaskOf` 报错并返回 0（该标签从此判定不到），加标签时看 Console。
+- 盒子「在哪」和帧事件同样是表数据，不许留回动画：`attackPhase[].track` 是稀疏关键帧，`GameData.Load` 摊平成按帧号直取的 `bakedPosition/bakedSize`，只有盒子开着的那一拍才写 `localPosition` + `BoxCollider.size`（写局部坐标，面向镜像因此自动生效；没填 track 就一个数都不碰）；`ActionInfo.cues` 由 `ActionController.CalculateCues` 按**游标**派发而不是区间比较（循环回绕那一拍区间是倒的，点会被整段跳过），换动作置 `startFrame-1`、回绕置 `-1`，硬直期间不响。派发口是 `CueDispatch.Handler`（只允许一个消费者），**消费端必须池化**——源工程每响一次就 `new GameObject + AudioSource`，照搬就撞 0 分配。两者的拍号与窗口 `min` 同一个基准（0-based 恒等）。
 
 ## 逻辑时钟与单位
 
 - 逻辑层的"时长"一律是 `int` 逻辑帧（`durationFrames`、`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。动作内部的窗口存**绝对帧号**（`FrameRange`），判定只剩整数比较。
-- 一个动作的时长真源只有表里的 `durationFrames`：窗口上界、RootMotion 的线性段、CrossFade 的 offset 全以它为标尺。美术重导 clip 之后这个数必须跟着改——跑菜单 `Tools/ACT/打印动作时长` 校对（跟实际长度对不上打 ✗，顺带查空窗口和越界窗口）。从 `.anim` 曲线迁帧数据同样**不许手数**：跑 `Tools/ACT/导出 BeatEmUp 帧数据草稿`（产出 `Doc/plan/beatemup-anim-dump.md`），换算公式 `min = 抬起帧`、`max = 落下帧 − 2`（第 n 拍摆的就是 clip 第 n 帧，是恒等映射；窗口按跨帧语义生效 min..max+1），推导写在工具头注释里。
+- 一个动作的时长真源只有表里的 `durationFrames`：窗口上界、RootMotion 的线性段、CrossFade 的 offset 全以它为标尺。美术重导 clip 之后这个数必须跟着改——跑菜单 `Tools/ACT/打印动作时长` 校对（跟实际长度对不上打 ✗，顺带查空窗口和越界窗口）。从 `.anim` 曲线迁帧数据同样**不许手数**：跑 `Tools/ACT/导出 BeatEmUp 帧数据草稿`（产出 `Doc/plan/beatemup-anim-dump.md`），换算公式 `min = 抬起帧`、`max = 落下帧 − 2`（第 n 拍摆的就是 clip 第 n 帧，是恒等映射；窗口按跨帧语义生效 min..max+1），推导写在工具头注释里；工具同时产出可以直接粘的 `track`（位置/尺寸已按帧合并，尺寸 = 缩放曲线 × 精灵 size）与 `cues`（`kind` 是 `CueKind` 的序号）两段 JSON。
 - `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
 - Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
 - 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤）。采样那一拍是静态入口 `CharacterObj.SampleOverlaps`，不是组件回调。改成别处调用的顺序就要重新想一遍谁先谁后。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
-- 改动窗口语义、动作时钟、顿挫或命中采样，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上、第几帧打到"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
+- 改动窗口语义、动作时钟、顿挫、命中采样、盒子轨迹或帧事件，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上、第几帧打到、第几帧摆到哪、第几拍响哪条"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
+- 用例里比较"累加出来的位置"和"每拍位移 × 拍数"必须带容差（`1e-6f`）：两种算法天然差 1 ULP，写死精确相等的话编译器一融合乘加就假红。
 
 ## 分类索引
 
