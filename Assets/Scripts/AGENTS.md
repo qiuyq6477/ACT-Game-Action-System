@@ -20,8 +20,12 @@
 
 - 逻辑层的"时长"一律是 `int` 逻辑帧（`durationFrames`、`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。动作内部的窗口存**绝对帧号**（`FrameRange`），判定只剩整数比较。
 - 一个动作的时长真源只有表里的 `durationFrames`：窗口上界、RootMotion 的线性段、CrossFade 的 offset 全以它为标尺。美术重导 clip 之后这个数必须跟着改——跑菜单 `Tools/ACT/打印动作时长` 校对（跟实际长度对不上打 ✗，顺带查空窗口和越界窗口）。从 `.anim` 曲线迁帧数据同样**不许手数**：跑 `Tools/ACT/导出 BeatEmUp 帧数据草稿`（产出 `Doc/plan/beatemup-anim-dump.md`），换算公式 `min = 抬起帧`、`max = 落下帧 − 2`（第 n 拍摆的就是 clip 第 n 帧，是恒等映射；窗口按跨帧语义生效 min..max+1），推导写在工具头注释里；工具同时产出可以直接粘的 `track`（位置/尺寸已按帧合并，尺寸 = 缩放曲线 × 精灵 size）与 `cues`（`kind` 是 `CueKind` 的序号）两段 JSON。
+- 派生候选**同分时的赢家是表里靠前的那一行**（`Tick` 里的冒泡只比大小、不比谁先），所以 `priority` 不许留空当装饰：攻击/跳跃/格挡这类"真的要出招"的行必须高于移动行的自取消（本工程用 攻击 10 / 倒地追击 20 / 移动 0）。**站立这类兜底行不许挂 `cancelTag`**——挂了等于"每个没按方向的拍都自己挤自己一次"，而它通常是表里第一条，于是同键的攻击永远出不来（demo 的 `BoxingStand` 从来不挂 tag，道理相同）。
+- 跳跃是**一对**参数：`ActionInfo.jumpUpSpeed`（换动作那一拍交给 `CharacterObj.Jump` 的初速度，米/秒）和 `CharacterObj.weight`（每逻辑帧加到下落速度上的量）——滞空拍数 ≈ 2·v0/(weight·60)、最高点 = v0²·60/(2·weight)，所以改一个必须看另一个。飞行与落地**不走 root motion**：`.anim` 里那条 y 曲线不认识地面。落地那一拍由 `landActionId` 切动作（`CharacterObj.JustLanded` 在移动拍里写、动作拍在它之后，所以差一拍），`autoNextActionId` 只管"片子先走完"的那一半，两者都要填。
 - `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
 - Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
+- 角色控制器的铁律：**`animKey` == Animator 状态名 == clip 文件名**，三者同名才对得上（`打印动作时长` 就是按状态名查的），状态之间零转换——切哪个状态、从第几拍开始全由 `ActionController` 决定。精灵玩家的控制器由 `Tools/ACT/生成 BeatEmUp 玩家的 AnimatorController` 从表生成，**派生资产建完必须重新读盘数一遍状态**：`new AnimatorController()` + `AddLayer` + `CreateAsset` 吹出来的层是空壳（`m_StateMachine: {fileID: 0}`），日志报"建了 21 个"而盘上什么都没有。用 `AnimatorController.CreateAnimatorControllerAtPath` 才有真状态机。
+- 判定盒/武器挂点的节点名**必须避开 clip 里已有的绑定路径**（源工程是 `HitBox`、`WeaponPos`）：clip 里那 34 条 `HitBox` 的 `m_IsActive`/位置/缩放曲线现在全归招式表管，节点重名等于让 Animator 和表抢同一个方向盘（移植的盒子因此叫 `BeatHitBox`）。反过来，`SpriteRenderer` 必须和 `Animator` 挂在同一个物体上——clip 的 `m_Sprite` 曲线绑定路径是空的。
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
 - 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→相交采样→命中结算→计时与移动→同轨推挤）。采样那一拍是静态入口 `CharacterObj.SampleOverlaps`，不是组件回调。改成别处调用的顺序就要重新想一遍谁先谁后。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
@@ -32,9 +36,9 @@
 
 ## 表函数、场上查询与分类索引
 
-- 第四张函数表 `Methods/CancelConditionMethod.cs`：派生在「窗口 + 标签 + 指令」之后再过一道门禁（`StateIs` 地面/空中、`NearbyUnitInAction` 近处有谁），表里填 `CancelTag.cancelCondition = {method, param}`；**留空 = 没有门禁**，现有表项行为一字不变。函数名写错按**不成立**处理（默认放行等于悄悄拆门禁），参数在 `GameData.Load` 的 `Validate` 里检查，不留到战斗中间让 `float.Parse` 抛。
+- 第四张函数表 `Methods/CancelConditionMethod.cs`：派生在「窗口 + 标签 + 指令」之后再过一道门禁（`StateIs` 地面/空中、`NearbyUnitInCatalog` 近处有谁），表里填 `CancelTag.cancelCondition = {method, param}`；**留空 = 没有门禁**，现有表项行为一字不变。函数名写错按**不成立**处理（默认放行等于悄悄拆门禁），参数在 `GameData.Load` 的 `Validate` 里检查，不留到战斗中间让 `float.Parse` 抛。"有没有人躺着"这类场上查询按 **catalog** 匹配而不按动作 id：玩家躺下是 `PlayerKnockDownGrounded`、敌兵躺下是 `BeatenFromForward`，两行 id 不同而分类同为 `Beaten`，绑 id 等于把门禁绑死在一行的名字上。
 - 查"场上有谁"只走 `CharacterObj.Units`（注册在 `BindBoxes`、注销在 `OnDestroy`），**禁** `FindGameObjectsWithTag`。列表次序就是 Awake 次序、跨运行不稳定，平局裁决必须自己按位置或 id 排。
-- 分类倒排索引建在 `ActionController` 上（`SetAllActions` 里随"这个角色的那份表"一起重建），每个角色只会一份子集（`CharacterObj.actionSubset`，留空 = 全表）。**不许**把索引挪回 `GameData` 按全表建：那会把角色根本不会的招式端上 byCatalog 候选，"挨一下切到什么动作"就取决于全表的行序。开场 id 同理走 `CharacterObj.defaultActionId`，没填才退回 `GameMain` 里写死的那两个。
+- 分类倒排索引建在 `ActionController` 上（`SetAllActions` 里随"这个角色的那份表"一起重建），**每个角色都必须填 `CharacterObj.actionSubset`**（留空 = 全表，只准出现在没有第二家招式的工程里）：demo 的拳击行和移植的玩家行共用同一批 cancel tag 字面量（两边的连招都挂 `Punch2`），全表在场时优先级高的那一家会把另一家的连招抢走，而这种错在 Console 里一点痕迹都没有。开场 id 走 `CharacterObj.defaultActionId`，没填才退回 `GameMain` 里写死的那两个。用例里"用真表"的那几条同理要按家族取子集（`ActionFrameClockTests.FamilyOf`）。
 
 ## 性能验证
 

@@ -37,8 +37,8 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     private const string GroundLayerName = "Ground";
     /// <summary>
-    /// 地面层的掩码，Awake里解析：LayerMask.NameToLayer不许出现在字段初始化器里（那等于在.cctor里调），
-    /// 而且层不存在时它返回-1，1 << -1在C#里是未定义行为，所以只能在Awake里判完再生成
+    /// 地面层的掩码，BindBoxes里解析：LayerMask.NameToLayer不许出现在字段初始化器里（那等于在.cctor里调），
+    /// 而且层不存在时它返回-1，1 << -1在C#里是未定义行为，所以只能在运行期判完再生成
     /// </summary>
     private int _groundMask;
 
@@ -55,7 +55,8 @@ public class CharacterObj : MonoBehaviour
     public MoveState State { get; private set; } = MoveState.Grounded;
 
     /// <summary>
-    /// 只在落地的那一个逻辑帧为true（每次Tick开头清零），留给以后的落地动作或者音效
+    /// 只在落地的那一个逻辑帧为true（每次Tick开头清零）。
+    /// 消费者是 ActionController：落地那一拍按表里的 landActionId 换动作（落地后摇、落地音效都从这儿走）
     /// </summary>
     public bool JustLanded { get; private set; }
 
@@ -190,14 +191,6 @@ public class CharacterObj : MonoBehaviour
         }));
 
         BindBoxes();
-
-        //这一层不存在的话探测永远落空，角色会一路往下掉，而这种错法本来没有任何报错，所以这里必须喊一声
-        int groundLayer = LayerMask.NameToLayer(GroundLayerName);
-        if (groundLayer < 0)
-            Debug.LogError("工程里没有 " + GroundLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
-                           "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
-        else
-            _groundMask = 1 << groundLayer;
     }
 
     /// <summary>
@@ -208,6 +201,17 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     public void BindBoxes()
     {
+        //地面层在这里解析，不在Awake里：跳跃与落地的用例同样要在编辑态跑，
+        //而地面向的探测取的是这个掩码——留在Awake里意味着编辑态永远踩不到地面（见 Units 的同款理由）
+        //放在early-return之前：NameToLayer是纯查表，重复调几次初始化期的开销可以忽略
+        //这一层不存在的话探测永远落空，角色会一路往下掉，而这种错法本来没有任何报错，所以这里必须喊一声
+        int groundLayer = LayerMask.NameToLayer(GroundLayerName);
+        if (groundLayer < 0)
+            Debug.LogError("工程里没有 " + GroundLayerName + " 这一层：请在 Project Settings → Tags and Layers 里加出来，" +
+                           "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
+        else
+            _groundMask = 1 << groundLayer;
+
         if (AttackBoxes != null) return;
 
         //注册表也在这里挂上：取消条件那条路径要用（见 Units 的注释），而 EditMode 不跑 Awake
@@ -260,17 +264,20 @@ public class CharacterObj : MonoBehaviour
     }
 
     /// <summary>
-    /// 除自己以外，近处有没有一个当前动作正好是 actionId 的角色。
+    /// 除自己以外，近处有没有一个当前动作属于某个分类的角色。
+    /// 【匹配的是 catalog 而不是动作 id】：同一件"被打倒在地上"的事，玩家和敌兵是两行不同的动作
+    /// （PlayerKnockDownGrounded / 敌兵那行），门禁要问的是"有没有人躺着"，不是"有没有人正播这一行动作"。
+    /// 用 id 匹配等于把这条门禁绑死在某一行的名字上，敌兵改个 id 就悄悄失效
     /// 【距离只算 x 与 z】：y 归地面探测管，用它做距离会把"同一个车道前后站"算成很远
     /// 【用平方距离】：比较大小不需要开方，每拍都 sqrt 一次不值
     /// </summary>
     /// <param name="self">发起查询的角色，它自己不算</param>
-    /// <param name="actionId">要匹配的动作 id</param>
+    /// <param name="catalog">要匹配的动作分类</param>
     /// <param name="range">半径（米）</param>
     /// <returns></returns>
-    public static bool AnyOtherInAction(CharacterObj self, string actionId, float range)
+    public static bool AnyOtherInCatalog(CharacterObj self, string catalog, float range)
     {
-        if (!self) return false;
+        if (!self || string.IsNullOrEmpty(catalog)) return false;
         Vector3 from = self.transform.position;
         float sqrRange = range * range;
         for (int i = 0; i < _units.Count; i++)
@@ -279,7 +286,7 @@ public class CharacterObj : MonoBehaviour
             if (other == null || other == self) continue;
             //还没绑定过的角色（比如同一拍里刚生成、Awake 没跑）不该被当成"场上的敌人"
             if (other.action == null) continue;
-            if (other.action.CurrentAction.id != actionId) continue;
+            if (other.action.CurrentAction.catalog != catalog) continue;
             Vector3 d = other.transform.position - from;
             if (d.x * d.x + d.z * d.z <= sqrRange) return true;
         }
@@ -705,13 +712,28 @@ public class CharacterObj : MonoBehaviour
     {
         _forceMove = ForceMove.FromData(force);
     }
+
+    /// <summary>
+    /// 起跳：给一个向上的初速度（米/秒），并把状态改成空中。0 或负数什么都不做。
+    /// 【为什么要手动把状态改成 Airborne】：Move() 里"这一列探不到地面"那条会把 _curWeight 清零
+    /// （那是给"走下平台边缘"用的：下落速度从0算起），而起跳的第一拍恰好也探不到地面——
+    /// 不先改状态，初速度会在同一拍被自己抹掉，角色只会原地抖一下
+    /// </summary>
+    /// <param name="upSpeed">向上的初速度，来自表里的 jumpUpSpeed</param>
+    public void Jump(float upSpeed)
+    {
+        if (upSpeed <= 0f) return;
+        _curWeight = -upSpeed;   //正数表示往下，所以起跳取负
+        State = MoveState.Airborne;
+    }
 }
 
 /// <summary>
 /// 角色的移动状态。
-/// 规划里的第三个状态Landing（落地后摇）这期没做：现在整个工程里没有跳跃，
-/// 唯一能离地的是一记击退的0.2米、统共两三个逻辑帧，落地动作既没动画也没表条目，
-/// 做出来是个没有消费者的分支。等Phase 3把跳跃或者落地动作带出来再接。
+/// 跳跃已经由招式表带出来了（ActionInfo.jumpUpSpeed / landActionId），
+/// 但这里仍然只有两个状态：落地后摇是**一行动作**（PlayerLand，硬直和镜头抖都写在它的 cue 里），
+/// 不是一种地形状态——脚在地面上，这就够了。
+/// 规划里的第三个状态Landing要是哪天出现"落地瞬间可以超级装甲"这类需求，再从 JustLanded 里长出来
 /// </summary>
 public enum MoveState
 {

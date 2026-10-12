@@ -78,6 +78,22 @@ public struct ActionInfo
     public MoveInputAcceptance[] inputAcceptance;
 
     /// <summary>
+    /// 切换到这个动作的那一拍，给角色的向上初速度（米/秒）。0 = 不把人抬起来。
+    /// 【为什么不走 root motion】：飞多久、什么时候落地是由地形决定的（跳上高台、从台边走下去
+    /// 都得是真的物理），而 .anim 里那条 y 位移曲线只是美术手K的抛物线，它不认识地面在哪。
+    /// 重力取 CharacterObj.weight（每逻辑帧加到下落速度上的量），所以滞空拍数 ≈ 2·v0/(weight·60)——
+    /// durationFrames 只是动画长度，不是滞空时长，两者靠 landActionId 对齐
+    /// </summary>
+    public float jumpUpSpeed;
+
+    /// <summary>
+    /// 落地的那一拍切到哪个动作 id（留空 = 落地不换动作）。
+    /// 【为什么不能用 autoNextActionId 代替】：那个是"片子播完"，而落地的早晚由地形决定，
+    /// 比片子早（从高台跳下去）和比片子晚（落在坑里、或者滞空时被硬直拖住）都对不上
+    /// </summary>
+    public string landActionId;
+
+    /// <summary>
     /// 下一个动作的id
     /// 这个id是当动作自然播放完毕之后转向的那个动作，所以必须是一个严格的id
     /// 【注意1】

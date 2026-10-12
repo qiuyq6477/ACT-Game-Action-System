@@ -1,160 +1,215 @@
 ﻿{
-    "data":[
+    "data": [
         {
-            "id":"BoxingStand",
-            "durationFrames":48,
-            "animKey":"BoxingStand",
-            "catalog":"Stand",
-            "cancelTag":[],
-            "beCancelledTag":[
+            "id": "BoxingStand",
+            "durationFrames": 48,
+            "animKey": "BoxingStand",
+            "catalog": "Stand",
+            "cancelTag": [],
+            "beCancelledTag": [
                 {
-                    "cancelWindowFrames": {"min": 0, "max": 48},
-                    "cancelTag":["InitAction"],
-                    "fadeOutFrames":2
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 2
                 }
             ],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attacks": [],
             "attackPhase": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 48}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 48
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"BoxingMoveForward",
-            "durationFrames":48,
-            "animKey":"BoxingForward",
-            "catalog":"Stand",
+            "id": "BoxingMoveForward",
+            "durationFrames": 48,
+            "animKey": "BoxingForward",
+            "catalog": "Stand",
             "keepPlayingAnim": true,
             "autoTerminate": true,
-            "cancelTag":[
+            "cancelTag": [
                 {
-                    "tag":"InitAction",
-                    "startFromFrame":0,
-                    "fadeInFrames":2
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2
                 }
             ],
-            "beCancelledTag":[
+            "beCancelledTag": [
                 {
-                    "cancelWindowFrames": {"min": 0, "max": 48},
-                    "cancelTag":["InitAction"],
-                    "fadeOutFrames":2,
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 2,
                     "priority": 1
                 }
             ],
-            "tempBeCancelledTag":[],
-            "commands":[
+            "tempBeCancelledTag": [],
+            "commands": [
                 {
-                    "keySequence":[6],
-                    "validInFrames":1
+                    "keySequence": [
+                        6
+                    ],
+                    "validInFrames": 1
                 }
             ],
-            "inputAcceptance": [{
-                "range": {"min": 0, "max": 48},
-                "rate": 1
-            }],
-            "autoNextActionId":"BoxingStand",
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "rate": 1
+                }
+            ],
+            "autoNextActionId": "BoxingStand",
             "attacks": [],
             "attackPhase": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 48}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 48
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"BoxingMoveBackward",
-            "durationFrames":48,
-            "animKey":"BoxingBackward",
-            "catalog":"Stand",
+            "id": "BoxingMoveBackward",
+            "durationFrames": 48,
+            "animKey": "BoxingBackward",
+            "catalog": "Stand",
             "keepPlayingAnim": true,
             "autoTerminate": true,
-            "cancelTag":[
+            "cancelTag": [
                 {
-                    "tag":"InitAction",
-                    "startFromFrame":0,
-                    "fadeInFrames":2
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2
                 }
             ],
-            "beCancelledTag":[
+            "beCancelledTag": [
                 {
-                    "cancelWindowFrames": {"min": 0, "max": 48},
-                    "cancelTag":["InitAction"],
-                    "fadeOutFrames":2
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 2
                 },
                 {
-                    "cancelWindowFrames": {"min": 39, "max": 48},
-                    "cancelTag":["TurnBack"],
-                    "fadeOutFrames":2
+                    "cancelWindowFrames": {
+                        "min": 39,
+                        "max": 48
+                    },
+                    "cancelTag": [
+                        "TurnBack"
+                    ],
+                    "fadeOutFrames": 2
                 }
             ],
-            "tempBeCancelledTag":[],
-            "commands":[
+            "tempBeCancelledTag": [],
+            "commands": [
                 {
-                    "keySequence":[4],
-                    "validInFrames":0
+                    "keySequence": [
+                        4
+                    ],
+                    "validInFrames": 0
                 }
             ],
-            "inputAcceptance": [{
-                "range": {"min": 0, "max": 48},
-                "rate": 0.7
-            }],
-            "autoNextActionId":"BoxingStand",
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "rate": 0.7
+                }
+            ],
+            "autoNextActionId": "BoxingStand",
             "attacks": [],
             "attackPhase": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 48}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 48
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"HurtFromForward",
-            "durationFrames":18,
+            "id": "HurtFromForward",
+            "durationFrames": 18,
             "说明": [
                 "受伤从不同的角度有不同的动作，其实这些动作之间的Cancel等具体信息都是不同的",
                 "比如我们希望背后受击惩罚大一些，不可以做出一些反击动作等，那么背后的Cancel与正面的就不同了",
@@ -166,222 +221,275 @@
                 "很好理解，我脚踹脸，无论被踹到的是什么人，只要踹到脸反应都是脸被踹，只是被踹之后还能站住或者就躺了（Hp残余多少）各不相同",
                 "所以值得注意的是，受伤在这个demo分了Hurt和Beaten，就是这个原理，他不是回合制游戏，在动作游戏里受伤动作本身都是严肃的"
             ],
-            "animKey":"HurtFromFront",
+            "animKey": "HurtFromFront",
             "priority": 10,
-            "catalog":"Hurt",
-            "cancelTag":[],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "catalog": "Hurt",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [],
             "attacks": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
                     "说明": "受击动作总得有一段无敌帧的",
-                    "inFrames": [{"min": 12, "max": 18}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 12,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":5
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 5
                     }
                 }
             ]
         },
         {
-            "id":"HurtFromBackward",
-            "durationFrames":18,
-            "animKey":"HurtFromBack",
-            "catalog":"Hurt",
+            "id": "HurtFromBackward",
+            "durationFrames": 18,
+            "animKey": "HurtFromBack",
+            "catalog": "Hurt",
             "priority": 10,
-            "cancelTag":[],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [],
             "attacks": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 12, "max": 18}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 12,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":5
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 5
                     }
                 }
             ]
         },
         {
-            "id":"BeatenFromForward",
-            "durationFrames":36,
-            "animKey":"BeatenFromFront",
-            "catalog":"Beaten",
+            "id": "BeatenFromForward",
+            "durationFrames": 36,
+            "animKey": "BeatenFromFront",
+            "catalog": "Beaten",
             "priority": 11,
-            "cancelTag":[],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [],
             "attacks": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 24, "max": 36}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 24,
+                            "max": 36
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":5
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 5
                     }
                 }
             ]
         },
         {
-            "id":"BeatenFromBackward",
-            "durationFrames":18,
-            "animKey":"BeatenFromBack",
-            "catalog":"Beaten",
+            "id": "BeatenFromBackward",
+            "durationFrames": 18,
+            "animKey": "BeatenFromBack",
+            "catalog": "Beaten",
             "priority": 11,
-            "cancelTag":[],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [],
             "attacks": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 12, "max": 18}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 12,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":5
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 5
                     }
                 }
             ]
         },
         {
-            "id":"TurnBack",
-            "durationFrames":48,
+            "id": "TurnBack",
+            "durationFrames": 48,
             "说明": "专门的转身动作，这个游戏中，我们让角色会倒退一段距离然后才转身",
-            "animKey":"BoxingBackward",
-            "catalog":"Stand",
+            "animKey": "BoxingBackward",
+            "catalog": "Stand",
             "keepPlayingAnim": false,
             "autoTerminate": false,
             "flip": true,
-            "cancelTag":[
+            "cancelTag": [
                 {
-                    "tag":"TurnBack",
-                    "startFromFrame":0,
-                    "fadeInFrames":2
+                    "tag": "TurnBack",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2
                 }
             ],
-            "beCancelledTag":[
+            "beCancelledTag": [
                 {
-                    "cancelWindowFrames": {"min": 0, "max": 48},
-                    "cancelTag":["InitAction"],
-                    "fadeOutFrames":2
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 48
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 2
                 }
             ],
-            "tempBeCancelledTag":[],
-            "commands":[
+            "tempBeCancelledTag": [],
+            "commands": [
                 {
-                    "keySequence":[4],
-                    "validInFrames":0
+                    "keySequence": [
+                        4
+                    ],
+                    "validInFrames": 0
                 }
             ],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attacks": [],
             "attackPhase": [],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 48}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 48
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"Punch1",
-            "durationFrames":12,
-            "animKey":"Punch1",
-            "catalog":"Punch",
-            "cancelTag":[
+            "id": "Punch1",
+            "durationFrames": 12,
+            "animKey": "Punch1",
+            "catalog": "Punch",
+            "cancelTag": [
                 {
-                    "tag":"InitAction",
-                    "startFromFrame":0,
-                    "fadeInFrames":1
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1
                 }
             ],
             "beCancelledTag": [],
-            "tempBeCancelledTag":[
+            "tempBeCancelledTag": [
                 {
-                    "id":"PunchCombo1",
-                    "lengthFrames":2,
-                    "cancelTag":["Punch2"],
-                    "fadeOutFrames":1
+                    "id": "PunchCombo1",
+                    "lengthFrames": 2,
+                    "cancelTag": [
+                        "Punch2"
+                    ],
+                    "fadeOutFrames": 1
                 }
             ],
-            "commands":[
+            "commands": [
                 {
-                    "keySequence":[100],
-                    "validInFrames":3
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
                 }
             ],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [
                 {
-                    "inFrames": [{"min": 4, "max": 5}],
-                    "tag":["LeftPunch"],
+                    "inFrames": [
+                        {
+                            "min": 4,
+                            "max": 5
+                        }
+                    ],
+                    "tag": [
+                        "LeftPunch"
+                    ],
                     "attackPhase": 0,
                     "priority": 0
                 }
@@ -392,7 +500,11 @@
                     "attack": 0.3,
                     "forceDir": 0,
                     "pushPower": {
-                        "moveDistance": {"x": 0.1, "y": 0, "z": 0},
+                        "moveDistance": {
+                            "x": 0.1,
+                            "y": 0,
+                            "z": 0
+                        },
                         "inFrames": 5,
                         "tweenMethod": "Slowly"
                     },
@@ -401,70 +513,90 @@
                     "canHitSameTarget": 1,
                     "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
                     "targetActionChange": {
-                        "changeType":2,
-                        "param":"Hurt",
-                        "priority":5
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": ["PunchCombo1"]
+                    "tempBeCancelledTagTurnOn": [
+                        "PunchCombo1"
+                    ]
                 }
             ],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 12}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 12
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"Punch2",
-            "durationFrames":38,
-            "animKey":"Punch2",
-            "catalog":"Punch",
-            "cancelTag":[
+            "id": "Punch2",
+            "durationFrames": 38,
+            "animKey": "Punch2",
+            "catalog": "Punch",
+            "cancelTag": [
                 {
-                    "tag":"Punch2",
-                    "startFromFrame":0,
-                    "fadeInFrames":2
+                    "tag": "Punch2",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2
                 }
             ],
             "beCancelledTag": [],
-            "tempBeCancelledTag":[
+            "tempBeCancelledTag": [
                 {
-                    "id":"PunchCombo2",
-                    "lengthFrames":4,
-                    "cancelTag":["Punch1"],
-                    "fadeOutFrames":2
+                    "id": "PunchCombo2",
+                    "lengthFrames": 4,
+                    "cancelTag": [
+                        "Punch1"
+                    ],
+                    "fadeOutFrames": 2
                 }
             ],
-            "commands":[
+            "commands": [
                 {
-                    "keySequence":[100],
-                    "validInFrames":3
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
                 }
             ],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [
                 {
-                    "inFrames": [{"min": 16, "max": 19}],
-                    "tag":["RightPunch"],
+                    "inFrames": [
+                        {
+                            "min": 16,
+                            "max": 19
+                        }
+                    ],
+                    "tag": [
+                        "RightPunch"
+                    ],
                     "attackPhase": 0,
                     "priority": 0
                 }
@@ -481,7 +613,11 @@
                             "但是正确的做法是受击动作本身看起来就是有点飞起的那种，是美术做的迎合这类勾拳受击",
                             "而不应该依赖于程序逻辑去做到这个效果"
                         ],
-                        "moveDistance": {"x": 0.1, "y": 0.2, "z": 0},
+                        "moveDistance": {
+                            "x": 0.1,
+                            "y": 0.2,
+                            "z": 0
+                        },
                         "inFrames": 7,
                         "tweenMethod": "Slowly"
                     },
@@ -490,33 +626,42 @@
                     "canHitSameTarget": 1,
                     "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
                     "targetActionChange": {
-                        "changeType":2,
-                        "param":"Hurt",
-                        "priority":5
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": ["PunchCombo2"]
+                    "tempBeCancelledTagTurnOn": [
+                        "PunchCombo2"
+                    ]
                 }
             ],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 38}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 38
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ],
@@ -528,49 +673,69 @@
                     "参数2：从第几个逻辑帧开始移动",
                     "参数3：到第几个逻辑帧结束移动"
                 ],
-                "param": ["0.2", "5", "8"]
+                "param": [
+                    "0.2",
+                    "5",
+                    "8"
+                ]
             }
         },
         {
-            "id":"Kick1",
-            "durationFrames":42,
-            "animKey":"Kick1",
-            "catalog":"Kick",
-            "cancelTag":[
+            "id": "Kick1",
+            "durationFrames": 42,
+            "animKey": "Kick1",
+            "catalog": "Kick",
+            "cancelTag": [
                 {
-                    "tag":"InitAction",
-                    "startFromFrame":0,
-                    "fadeInFrames":2
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2
                 }
             ],
-            "beCancelledTag":[
+            "beCancelledTag": [
                 {
-                    "cancelWindowFrames": {"min": 25, "max": 37},
-                    "cancelTag":["TwinKickWhileKick1"],
-                    "fadeOutFrames":2,
-                    "priority":1
+                    "cancelWindowFrames": {
+                        "min": 25,
+                        "max": 37
+                    },
+                    "cancelTag": [
+                        "TwinKickWhileKick1"
+                    ],
+                    "fadeOutFrames": 2,
+                    "priority": 1
                 }
             ],
-            "tempBeCancelledTag":[
+            "tempBeCancelledTag": [
                 {
-                    "id":"KickCombo1",
-                    "lengthFrames":5,
-                    "cancelTag":["Kick1"],
-                    "fadeOutFrames":2
+                    "id": "KickCombo1",
+                    "lengthFrames": 5,
+                    "cancelTag": [
+                        "Kick1"
+                    ],
+                    "fadeOutFrames": 2
                 }
             ],
-            "commands":[
+            "commands": [
                 {
-                    "keySequence":[101],
-                    "validInFrames":3
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
                 }
             ],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [
                 {
-                    "inFrames": [{"min": 15, "max": 18}],
-                    "tag":["RightKick"],
+                    "inFrames": [
+                        {
+                            "min": 15,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "RightKick"
+                    ],
                     "attackPhase": 0,
                     "priority": 0
                 }
@@ -581,7 +746,11 @@
                     "attack": 0.3,
                     "forceDir": 0,
                     "pushPower": {
-                        "moveDistance": {"x": 0.2, "y": 0, "z": 0},
+                        "moveDistance": {
+                            "x": 0.2,
+                            "y": 0,
+                            "z": 0
+                        },
                         "inFrames": 7,
                         "tweenMethod": "Slowly"
                     },
@@ -590,75 +759,98 @@
                     "canHitSameTarget": 1,
                     "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
                     "targetActionChange": {
-                        "changeType":2,
-                        "param":"Hurt",
-                        "priority":5
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": ["KickCombo1"]
+                    "tempBeCancelledTagTurnOn": [
+                        "KickCombo1"
+                    ]
                 }
             ],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 42}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 42
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ],
             "rootMotionTween": {
                 "method": "GoStraight",
-                "param": ["0.3"]
+                "param": [
+                    "0.3"
+                ]
             }
         },
         {
-            "id":"TwinKick",
-            "durationFrames":30,
-            "animKey":"TwinKick",
-            "catalog":"Skill",
+            "id": "TwinKick",
+            "durationFrames": 30,
+            "animKey": "TwinKick",
+            "catalog": "Skill",
             "priority": 1,
-            "cancelTag":[
+            "cancelTag": [
                 {
-                    "tag":"InitAction",
-                    "startFromFrame":0,
-                    "fadeInFrames":2,
-                    "priority":0
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 2,
+                    "priority": 0
                 },
                 {
-                    "tag":"TwinKickWhileKick1",
-                    "startFromFrame":3,
-                    "fadeInFrames":2,
-                    "priority":1
+                    "tag": "TwinKickWhileKick1",
+                    "startFromFrame": 3,
+                    "fadeInFrames": 2,
+                    "priority": 1
                 }
             ],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
                 {
-                    "keySequence":[2,3,6,101],
-                    "validInFrames":6
+                    "keySequence": [
+                        2,
+                        3,
+                        6,
+                        101
+                    ],
+                    "validInFrames": 6
                 }
             ],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [
                 {
-                    "inFrames": [{"min": 9, "max": 10}],
-                    "tag":["LeftKick"],
+                    "inFrames": [
+                        {
+                            "min": 9,
+                            "max": 10
+                        }
+                    ],
+                    "tag": [
+                        "LeftKick"
+                    ],
                     "attackPhase": 0,
                     "priority": 0
                 }
@@ -669,7 +861,11 @@
                     "attack": 0.25,
                     "forceDir": 0,
                     "pushPower": {
-                        "moveDistance": {"x": 0.2, "y": 0, "z": 0},
+                        "moveDistance": {
+                            "x": 0.2,
+                            "y": 0,
+                            "z": 0
+                        },
                         "inFrames": 4,
                         "tweenMethod": "Slowly"
                     },
@@ -678,54 +874,68 @@
                     "canHitSameTarget": 1,
                     "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
-                        "changeType":1,
-                        "param":"TwinKickAutoCombo",
-                        "priority":0,
-                        "fromFrame":11
+                        "changeType": 1,
+                        "param": "TwinKickAutoCombo",
+                        "priority": 0,
+                        "fromFrame": 11
                     },
                     "targetActionChange": {
-                        "changeType":2,
-                        "param":"Hurt",
-                        "priority":5
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
                     },
                     "tempBeCancelledTagTurnOn": []
                 }
             ],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 30}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 30
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
             ]
         },
         {
-            "id":"TwinKickAutoCombo",
-            "durationFrames":42,
-            "animKey":"TwinKick2",
+            "id": "TwinKickAutoCombo",
+            "durationFrames": 42,
+            "animKey": "TwinKick2",
             "priority": 2,
-            "catalog":"Skill",
-            "cancelTag":[],
-            "beCancelledTag":[],
-            "tempBeCancelledTag":[],
-            "commands":[],
+            "catalog": "Skill",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
             "inputAcceptance": [],
-            "autoNextActionId":"BoxingStand",
+            "autoNextActionId": "BoxingStand",
             "attackPhase": [
                 {
-                    "inFrames": [{"min": 16, "max": 21}],
-                    "tag":["LeftKick"],
+                    "inFrames": [
+                        {
+                            "min": 16,
+                            "max": 21
+                        }
+                    ],
+                    "tag": [
+                        "LeftKick"
+                    ],
                     "attackPhase": 0,
                     "priority": 0
                 }
@@ -736,7 +946,11 @@
                     "attack": 0.6,
                     "forceDir": 0,
                     "pushPower": {
-                        "moveDistance": {"x": 0.7, "y": 0, "z": 0},
+                        "moveDistance": {
+                            "x": 0.7,
+                            "y": 0,
+                            "z": 0
+                        },
                         "inFrames": 16,
                         "tweenMethod": "Slowly"
                     },
@@ -745,35 +959,2108 @@
                     "canHitSameTarget": 1,
                     "hitSameTargetDelayFrames": 60,
                     "selfActionChange": {
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
                     "targetActionChange": {
-                        "changeType":2,
-                        "param":"Beaten",
-                        "priority":5
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
                     },
                     "tempBeCancelledTagTurnOn": []
                 }
             ],
-            "defensePhase":[
+            "defensePhase": [
                 {
-                    "inFrames": [{"min": 0, "max": 42}],
-                    "tag":["Hurt"],
-                    "priority":0,
-                    "tempBeCancelledTagTurnOn":[],
-                    "attackerActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 42
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     },
-                    "selfActionChange":{
-                        "changeType":0,
-                        "param":"",
-                        "priority":0
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
                     }
                 }
+            ]
+        },
+        {
+            "id": "PlayerIdle",
+            "durationFrames": 23,
+            "animKey": "PlayerIdle",
+            "catalog": "Stand",
+            "cancelTag": [],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 23
+                    },
+                    "cancelTag": [
+                        "InitAction",
+                        "RunTag"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 23
+                    },
+                    "rate": 1.0
+                }
+            ],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": true,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 23
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "站立既不 cancel 别人也不 cancel 自己：cancelTag 里写了 InitAction 就等于「每个没按方向的拍都自己挤自己一次」，而两个候选同分时赢的是 AllActions 里靠前的那一条（冒泡只比大小不比谁先）——PlayerIdle 恰好是全表第一条，于是站着按拳永远出不来。这跟 BoxingStand 的写法一致：idle 不挂 tag",
+                "循环靠 autoNextActionId 指回自己 + keepPlayingAnim：走到第 23 拍时预约的是 PlayerIdle 自己，而 keepPlayingAnim 让 ChangeAction 换成 KeepAction，于是动画不回卷到第 0 拍、也不重放 cue"
+            ]
+        },
+        {
+            "id": "PlayerRun",
+            "durationFrames": 37,
+            "animKey": "PlayerRun",
+            "catalog": "Stand",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1
+                },
+                {
+                    "tag": "RunTag",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 37
+                    },
+                    "cancelTag": [
+                        "InitAction",
+                        "RunTag"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 1
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        6
+                    ],
+                    "validInFrames": 1
+                },
+                {
+                    "keySequence": [
+                        4
+                    ],
+                    "validInFrames": 1
+                },
+                {
+                    "keySequence": [
+                        8
+                    ],
+                    "validInFrames": 1
+                },
+                {
+                    "keySequence": [
+                        2
+                    ],
+                    "validInFrames": 1
+                }
+            ],
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 37
+                    },
+                    "rate": 1.0
+                }
+            ],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": true,
+            "autoTerminate": true,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 37
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 8,
+                    "kind": 3,
+                    "param": ""
+                },
+                {
+                    "frame": 26,
+                    "kind": 3,
+                    "param": ""
+                }
+            ],
+            "说明": [
+                "一条 Run 覆盖八个方向：横向朝向由 Inversed 决定、纵深由 Up/Duck 决定，所以不像 demo 那样拆成前进/后退两条行",
+                "autoTerminate=true 让方向键一松就回站立",
+                "priority 留 0：跑动的自取消（按住方向键时它每拍都挤掉站立或自己一次）必须是场上最低的一档，否则按拳会被「继续跑」顶掉。攻击类统一 10、倒地追击 20，「平手时按表里先后定输赢」这件事才有兜底——谁都不该靠填表顺序赢"
+            ],
+            "priority": 0
+        },
+        {
+            "id": "PlayerPunch1",
+            "durationFrames": 18,
+            "animKey": "PlayerPunch1",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 9,
+                        "max": 18
+                    },
+                    "cancelTag": [
+                        "Punch2",
+                        "Kick3"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 4,
+                            "max": 8
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 4,
+                            "position": {
+                                "x": 0.6476,
+                                "y": 0.5548,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.9052,
+                                "y": 0.7495,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "说明": [
+                "接下一招的窗口从第 9 拍起：出拳的盒子在第 4..8 拍开着，命中之后才谈连招。源工程是整段播完才换招，这里换成真实的中途窗口——这正是本工程相对它的存在理由"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerPunch2",
+            "durationFrames": 13,
+            "animKey": "PlayerPunch2",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "Punch2",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 7,
+                        "max": 13
+                    },
+                    "cancelTag": [
+                        "Punch3",
+                        "Kick3"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 2.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 4,
+                            "max": 10
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 13
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 2,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerPunch3",
+            "durationFrames": 31,
+            "animKey": "PlayerPunch3",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "Punch3",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 3.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.9,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 14,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 6,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 6,
+                            "position": {
+                                "x": 0.3971,
+                                "y": 1.0032,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 1.158,
+                                "y": 1.0455,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 31
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 3,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "说明": [
+                "收尾拳：源工程只在 Punch3 上标 knockdown=1，这里用 targetActionChange 指到 Beaten 那一类"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerKick1",
+            "durationFrames": 18,
+            "animKey": "PlayerKick1",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 11,
+                        "max": 18
+                    },
+                    "cancelTag": [
+                        "Kick2",
+                        "Punch3"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 2,
+                            "max": 10
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 2,
+                            "position": {
+                                "x": 0.354,
+                                "y": 0.686,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.738,
+                                "y": 0.7034,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 18
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerKick2",
+            "durationFrames": 36,
+            "animKey": "PlayerKick2",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "Kick2",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 2.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.7,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 12,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 9,
+                            "max": 13
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 9,
+                            "position": {
+                                "x": 0.423,
+                                "y": 0.779,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.738,
+                                "y": 0.7034,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 36
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 4,
+                    "param": ""
+                },
+                {
+                    "frame": 1,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "说明": [
+                "源工程的踢2带一条 AddForce 前冲 0.25 秒的动画事件，cue 里 kind=4 那条就是它"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerKick3",
+            "durationFrames": 21,
+            "animKey": "PlayerKick3",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "Kick3",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 12,
+                        "max": 21
+                    },
+                    "cancelTag": [
+                        "Punch3"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 2.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Hurt",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 4,
+                            "max": 11
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 21
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "说明": [
+                "拳1→脚3→拳3 是源工程 comboData 的第二条链，这里拆成两条 cancelTag 窗口"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerGroundPunch",
+            "durationFrames": 26,
+            "animKey": "PlayerGroundPunch",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "NearbyUnitInCatalog",
+                        "param": [
+                            "Beaten",
+                            "1.2"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 20,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 10,
+                            "max": 17
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 0,
+                            "position": {
+                                "x": 0.2259,
+                                "y": 0.1591,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.9316,
+                                "y": 0.5058,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 26
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 5,
+                    "kind": 0,
+                    "param": "Whoosh"
+                },
+                {
+                    "frame": 10,
+                    "kind": 2,
+                    "param": ""
+                }
+            ],
+            "说明": [
+                "和 PlayerPunch1 同一个键、同一个 tag，靠优先级 20 压过它——但只在门禁成立的时候才压得过：PlayerPunch1",
+                "门禁问的是「近处 1.2 米内有没有一个当前动作属于 Beaten 分类的人」。问分类而不问动作 id，因为玩家躺下是 PlayerKnockDownGrounded、敌兵躺下是 BeatenFromForward，两行 id 不同而分类同为 Beaten",
+                "没人在地上躺着时门禁不成立，这个键仍然出普通 Punch1，所以两招不打架",
+                "priority 20：比普攻的 10 高一档，所以有人躺着时同一个键出追击；没人躺着时门禁不成立，同一个键还是普攻"
+            ],
+            "priority": 20
+        },
+        {
+            "id": "PlayerGroundKick",
+            "durationFrames": 26,
+            "animKey": "PlayerGroundKick",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "NearbyUnitInCatalog",
+                        "param": [
+                            "Beaten",
+                            "1.2"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 20,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 10,
+                            "max": 17
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 0,
+                            "position": {
+                                "x": 0.1488,
+                                "y": 0.2792,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 1.0403,
+                                "y": 0.6476,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 26
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 5,
+                    "kind": 0,
+                    "param": "Whoosh"
+                },
+                {
+                    "frame": 10,
+                    "kind": 2,
+                    "param": ""
+                }
+            ],
+            "priority": 20,
+            "说明": [
+                "和 PlayerKick1 同一个键、同一个 tag，靠优先级 20 压过它——但只在门禁成立的时候才压得过：PlayerKick1",
+                "门禁问的是「近处 1.2 米内有没有一个当前动作属于 Beaten 分类的人」。问分类而不问动作 id，因为玩家躺下是 PlayerKnockDownGrounded、敌兵躺下是 BeatenFromForward，两行 id 不同而分类同为 Beaten",
+                "没人在地上躺着时门禁不成立，这个键仍然出普通 Kick1，所以两招不打架",
+                "priority 20：比普攻的 10 高一档，所以有人躺着时同一个键出追击；没人躺着时门禁不成立，同一个键还是普攻"
+            ]
+        },
+        {
+            "id": "PlayerJump",
+            "durationFrames": 31,
+            "animKey": "PlayerJump",
+            "catalog": "Stand",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 31
+                    },
+                    "cancelTag": [
+                        "AirAttackTag"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        103
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 31
+                    },
+                    "rate": 0.7
+                }
+            ],
+            "autoNextActionId": "PlayerLand",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 31
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 1,
+                    "param": "SmokePuffJump"
+                }
+            ],
+            "说明": [
+                "这条没有判定盒子。起跳的那一下是表里的 jumpUpSpeed，在换动作的那一拍交给 CharacterObj；飞行与落下全由重力积分决定（重力就是 CharacterObj.weight，换算成米每秒平方要乘 60），所以 durationFrames=31 只是动画长度——它和滞空拍数对得上，是因为 weight 和 jumpUpSpeed 是一起标定的",
+                "落地不等片子播完：CharacterObj.JustLanded 为真的那一拍按 landActionId 切到 PlayerLand。autoNextActionId 同样写 PlayerLand，那是「片子先走完、人还在空中」时的兜底——收在落地动画里继续飞",
+                "自己不带 AirAttackTag：那会让空中再按一次跳跃变成二段跳（同一行挤掉同一行）。AirAttackTag 的消费者是空中攻击，而跳跃只能从地面起手，所以门禁是 StateIs Grounded"
+            ],
+            "jumpUpSpeed": 12.4,
+            "landActionId": "PlayerLand",
+            "priority": 10
+        },
+        {
+            "id": "PlayerLand",
+            "durationFrames": 16,
+            "animKey": "PlayerLand",
+            "catalog": "Stand",
+            "cancelTag": [],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 6,
+                        "max": 16
+                    },
+                    "cancelTag": [
+                        "InitAction",
+                        "RunTag"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 0
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [
+                {
+                    "range": {
+                        "min": 0,
+                        "max": 16
+                    },
+                    "rate": 1.0
+                }
+            ],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 16
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 0,
+                    "param": "Land"
+                },
+                {
+                    "frame": 1,
+                    "kind": 2,
+                    "param": ""
+                },
+                {
+                    "frame": 2,
+                    "kind": 1,
+                    "param": "SmokePuffLand"
+                }
+            ],
+            "说明": [
+                "落地是独立一段：硬直与镜头抖、烟尘都在它的 cue 里",
+                "落地硬直不是死锁：第 7 拍起允许 InitAction/RunTag 挤进来，所以跳、跑、拳脚都能从落地后摇里接出来，只有前 6 拍是硬的"
+            ]
+        },
+        {
+            "id": "PlayerJumpAttackPunch",
+            "durationFrames": 26,
+            "animKey": "PlayerJumpAttackPunch",
+            "catalog": "Punch",
+            "cancelTag": [
+                {
+                    "tag": "AirAttackTag",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Airborne"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        100
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerLand",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 1.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 7,
+                            "max": 13
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 7,
+                            "position": {
+                                "x": 0.5037,
+                                "y": 0.2485,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.8255,
+                                "y": 2.0971,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 26
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "priority": 10
+        },
+        {
+            "id": "PlayerJumpAttackKick",
+            "durationFrames": 30,
+            "animKey": "PlayerJumpAttackKick",
+            "catalog": "Kick",
+            "cancelTag": [
+                {
+                    "tag": "AirAttackTag",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Airborne"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        101
+                    ],
+                    "validInFrames": 3
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerLand",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [
+                {
+                    "phase": 0,
+                    "attack": 2.0,
+                    "forceDir": 0,
+                    "pushPower": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0,
+                            "z": 0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    },
+                    "hitStunFrames": 7,
+                    "freezeFrames": 3,
+                    "canHitSameTarget": 1,
+                    "hitSameTargetDelayFrames": 60,
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "targetActionChange": {
+                        "changeType": 2,
+                        "param": "Beaten",
+                        "priority": 5
+                    },
+                    "tempBeCancelledTagTurnOn": []
+                }
+            ],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 7,
+                            "max": 14
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 7,
+                            "position": {
+                                "x": 0.5037,
+                                "y": 0.2485,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.8255,
+                                "y": 2.0971,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 30
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 0,
+                    "param": "Whoosh"
+                }
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerDefend",
+            "durationFrames": 41,
+            "animKey": "PlayerDefend",
+            "catalog": "Stand",
+            "cancelTag": [
+                {
+                    "tag": "InitAction",
+                    "startFromFrame": 0,
+                    "fadeInFrames": 1,
+                    "cancelCondition": {
+                        "method": "StateIs",
+                        "param": [
+                            "Grounded"
+                        ]
+                    }
+                }
+            ],
+            "beCancelledTag": [
+                {
+                    "cancelWindowFrames": {
+                        "min": 0,
+                        "max": 41
+                    },
+                    "cancelTag": [
+                        "InitAction"
+                    ],
+                    "fadeOutFrames": 1,
+                    "priority": 2
+                }
+            ],
+            "tempBeCancelledTag": [],
+            "commands": [
+                {
+                    "keySequence": [
+                        102
+                    ],
+                    "validInFrames": 1
+                }
+            ],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": true,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 41
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "说明": [
+                "Block 每拍登记，所以按住期间这条指令每拍都成立，于是一直回到格挡；keepPlayingAnim 让姿势连贯。源工程格挡是全额免伤、没有 blockstun 与推开，那两条是 1.9 要加的"
+            ],
+            "priority": 10
+        },
+        {
+            "id": "PlayerHit",
+            "durationFrames": 16,
+            "animKey": "PlayerHit",
+            "catalog": "Hurt",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 8,
+                            "max": 16
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "priority": 10,
+            "说明": [
+                "前 8 拍关掉受击盒就是这段硬直里的无敌帧（demo 的 HurtFromForward 同一手法）"
+            ]
+        },
+        {
+            "id": "PlayerKnockDown_Up",
+            "durationFrames": 1,
+            "animKey": "PlayerKnockDown_Up",
+            "catalog": "Beaten",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerKnockDown_Down",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 1
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "priority": 10,
+            "说明": [
+                "源工程的倒地分两段片子：_Up 是被打飞的那一下，_Down 是落地时那 1 帧盒子。真正把人抛起来的是 CharacterObj 的重力积分，不是这两条片子"
+            ]
+        },
+        {
+            "id": "PlayerKnockDown_Down",
+            "durationFrames": 1,
+            "animKey": "PlayerKnockDown_Down",
+            "catalog": "Beaten",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerKnockDownGrounded",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 0
+                        }
+                    ],
+                    "tag": [
+                        "BeatHit"
+                    ],
+                    "attackPhase": 0,
+                    "priority": 0,
+                    "track": [
+                        {
+                            "startFromFrame": 0,
+                            "position": {
+                                "x": 0.027,
+                                "y": 0.546,
+                                "z": 0
+                            },
+                            "size": {
+                                "x": 0.7899,
+                                "y": 0.64,
+                                "z": 0.5
+                            }
+                        }
+                    ]
+                }
+            ],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 1
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "priority": 10
+        },
+        {
+            "id": "PlayerKnockDownGrounded",
+            "durationFrames": 21,
+            "animKey": "PlayerKnockDownGrounded",
+            "catalog": "Beaten",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerStandUp",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 0,
+                            "max": 21
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 1,
+                    "param": "SmokePuffLand"
+                }
+            ],
+            "priority": 10,
+            "说明": [
+                "倒地追击查的就是这个 id。源工程在这里停 1 秒（knockDownFloorTime），而本工程的时长真源是 durationFrames、这条片子只有 21 帧，所以先照片子给 0.35 秒；要拉长按得改时长语义，记在 beatemup-port.md 第八节"
+            ]
+        },
+        {
+            "id": "PlayerStandUp",
+            "durationFrames": 16,
+            "animKey": "PlayerStandUp",
+            "catalog": "Beaten",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerIdle",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [
+                {
+                    "inFrames": [
+                        {
+                            "min": 8,
+                            "max": 16
+                        }
+                    ],
+                    "tag": [
+                        "Hurt"
+                    ],
+                    "priority": 0,
+                    "tempBeCancelledTagTurnOn": [],
+                    "attackerActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    },
+                    "selfActionChange": {
+                        "changeType": 0,
+                        "param": "",
+                        "priority": 0
+                    }
+                }
+            ],
+            "cues": [],
+            "priority": 10
+        },
+        {
+            "id": "PlayerDeath",
+            "durationFrames": 65,
+            "animKey": "PlayerDeath",
+            "catalog": "Death",
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "PlayerDeath",
+            "keepPlayingAnim": false,
+            "autoTerminate": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [],
+            "cues": [
+                {
+                    "frame": 0,
+                    "kind": 2,
+                    "param": ""
+                },
+                {
+                    "frame": 10,
+                    "kind": 3,
+                    "param": ""
+                },
+                {
+                    "frame": 11,
+                    "kind": 1,
+                    "param": "SmokePuffLand"
+                },
+                {
+                    "frame": 38,
+                    "kind": 0,
+                    "param": "Land"
+                }
+            ],
+            "priority": 20,
+            "说明": [
+                "死了就不该再被打到，所以受击阶段整个留空（不是填一个越界区间）"
             ]
         }
     ]

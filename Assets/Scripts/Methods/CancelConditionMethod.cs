@@ -30,7 +30,7 @@ public static class CancelConditionMethod
         new Dictionary<string, Func<CharacterObj, string[], bool>>
         {
             {"StateIs", EvalStateIs},
-            {"NearbyUnitInAction", EvalNearbyUnit},
+            {"NearbyUnitInCatalog", EvalNearbyUnit},
         };
 
     /// <summary>
@@ -78,10 +78,10 @@ public static class CancelConditionMethod
                 else if (param[0] != "Grounded" && param[0] != "Airborne" && param[0] != "Any")
                     Debug.LogError(ownerId + " 的 StateIs 参数是 \"" + param[0] + "\"，只认 Grounded / Airborne / Any");
                 break;
-            case "NearbyUnitInAction":
+            case "NearbyUnitInCatalog":
                 if (param.Length == 0)
-                    Debug.LogError(ownerId + " 的 NearbyUnitInAction 没写动作 id：它查的就是" +
-                                   "\"谁的当前动作等于这个 id\"，比如追击倒地敌人就写 KnockdownGrounded");
+                    Debug.LogError(ownerId + " 的 NearbyUnitInCatalog 没写分类名：它查的就是" +
+                                   "\"近处谁的当前动作属于这个分类\"，比如追击倒地敌人就写 Beaten");
                 if (param.Length > 1)
                 {
                     //TryParse 的 out 参数在 && 短路边上不算"已赋值"，所以把它单独拿出来判
@@ -89,9 +89,9 @@ public static class CancelConditionMethod
                         System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,
                         out float range);
                     if (!isNumber)
-                        Debug.LogError(ownerId + " 的 NearbyUnitInAction 半径 \"" + param[1] + "\" 不是个数");
+                        Debug.LogError(ownerId + " 的 NearbyUnitInCatalog 半径 \"" + param[1] + "\" 不是个数");
                     else if (range <= 0f)
-                        Debug.LogError(ownerId + " 的 NearbyUnitInAction 半径是 " + range +
+                        Debug.LogError(ownerId + " 的 NearbyUnitInCatalog 半径是 " + range +
                                        "，非正数意味着谁都算在近处之外");
                 }
                 break;
@@ -118,21 +118,23 @@ public static class CancelConditionMethod
     }
 
     /// <summary>
-    /// "近处有没有一个正处于某个动作的角色"。BeatEmUp 的倒地追击就写
-    /// {method:"NearbyUnitInAction", param:["KnockdownGrounded","1.2"]}
+    /// "近处有没有一个当前动作属于某个分类的角色"。BeatEmUp 的倒地追击就写
+    /// {method:"NearbyUnitInCatalog", param:["Beaten","1.2"]}
+    /// 【匹配分类而不是动作 id】：玩家和敌兵各有一行"躺在地上"，id 不同而分类同为 Beaten，
+    /// 门禁要问的是"有没有人躺着"——见 CharacterObj.AnyOtherInCatalog
     /// 【距离为什么只算 x 和 z】：HD-2D 里角色不会飘在不同高度上打架，y 归地面探测管；
     /// 用它做距离会让"同一个车道前后站"被算成很远
     /// </summary>
     private static bool EvalNearbyUnit(CharacterObj self, string[] param)
     {
-        string actionId = param == null || param.Length == 0 ? "" : param[0];
-        if (actionId.Length == 0) return false;
+        string catalog = param == null || param.Length == 0 ? "" : param[0];
+        if (catalog.Length == 0) return false;
 
         float range = DefaultNearbyRange;
         if (param.Length > 1 && float.TryParse(param[1],
                 System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,
                 out float parsed) && parsed > 0f) range = parsed;
 
-        return CharacterObj.AnyOtherInAction(self, actionId, range);
+        return CharacterObj.AnyOtherInCatalog(self, catalog, range);
     }
 }

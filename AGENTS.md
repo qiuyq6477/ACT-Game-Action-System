@@ -30,4 +30,4 @@
 
 ## Module Index
 
-- `Assets/Scripts/AGENTS.md` — 动作系统逻辑脚本（角色 / 动作控制器 / 判定盒 / 表函数）：热路径 0 分配、表数据在 `GameData.Load` 里烘焙、box tag 位掩码规则、`GcProbe` 验证方式、逻辑时钟的单位法则（时长一律 int 逻辑帧，Animator 只是从属）。配套的常驻工具在 `Assets/Editor/`：`Tools/ACT/打印动作时长` 校对表里的 `durationFrames` 与窗口，`ActionFrameClockTests.cs` 是改时钟/窗口后必跑的 EditMode 用例。
+- `Assets/Scripts/AGENTS.md` — 动作系统逻辑脚本（角色 / 动作控制器 / 判定盒 / 表函数）：热路径 0 分配、表数据在 `GameData.Load` 里烘焙、box tag 位掩码规则、`GcProbe` 验证方式、逻辑时钟的单位法则（时长一律 int 逻辑帧，Animator 只是从属）。配套的常驻工具在 `Assets/Editor/`：`Tools/ACT/打印动作时长` 校对表里的 `durationFrames` 与窗口（会扫 `Assets/Resources` 下每个角色 prefab 自己的控制器），`Tools/ACT/生成 BeatEmUp 玩家的 AnimatorController` 从表吹出精灵玩家那张平铺状态机，`ActionFrameClockTests.cs` 是改时钟/窗口后必跑的 EditMode 用例。

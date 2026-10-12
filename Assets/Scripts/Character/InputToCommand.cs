@@ -43,9 +43,9 @@ public class InputToCommand : MonoBehaviour
     private int _nonDirectCooldownFrames = 0;
 
     //本渲染帧poll到的按键状态，逻辑帧共用它（见下面的采样与推进为什么要拆开）
-    //Block 用 KeyCode 而不是 Input.GetButton("Block")：虚拟按钮要在 ProjectSettings/InputManager 里配一条轴，
-    //而这份配置得编辑器启动时重读才生效。Step 2 换新版 Input System 时它会和其他键一起进 action map
-    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward, _sBlock;
+    //Block 与 Jump 用 KeyCode 而不是 Input.GetButton：虚拟按钮要在 ProjectSettings/InputManager 里配一条轴，
+    //而这份配置得编辑器启动时重读才生效。Step 2 换新版 Input System 时它们会和其他键一起进 action map
+    private bool _sPunch, _sKick, _sUp, _sDuck, _sBack, _sForward, _sBlock, _sJump;
 
     /// <summary>
     /// Unity的按键状态每渲染帧只poll得到一次，所以采样必须在逻辑时钟之外做。
@@ -59,6 +59,7 @@ public class InputToCommand : MonoBehaviour
         _sPunch = Input.GetButton("Punch");
         _sKick = Input.GetButton("Kick");
         _sBlock = Input.GetKey(KeyCode.LeftShift);
+        _sJump = Input.GetKey(KeyCode.Space);
 
         float xInput = Input.GetAxis("Horizontal");
         float yInput = Input.GetAxis("Vertical");
@@ -123,6 +124,11 @@ public class InputToCommand : MonoBehaviour
                 if (_sKick)
                 {
                     AddInput(KeyMap.Kick);
+                    noKey = false;
+                }
+                if (_sJump)
+                {
+                    AddInput(KeyMap.Jump);
                     noKey = false;
                 }
 
@@ -401,6 +407,11 @@ public enum KeyMap
     /// 所以登记规则跟方向键同一类，但它不是方向——GetKeyInput 不镜像它
     /// </summary>
     Block = 102,
+    /// <summary>
+    /// 跳跃键。和拳脚一样是"按一下就登记"的非方向输入，因此吃那个 6 拍节流；
+    /// 空中重复按不会二段跳——招式表里起跳那行的门禁是 StateIs Grounded
+    /// </summary>
+    Jump = 103,
     Backward = 4,
     UpBackward = 7,
     Up = 8,

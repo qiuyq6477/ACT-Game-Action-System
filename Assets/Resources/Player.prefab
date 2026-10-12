@@ -1432,6 +1432,21 @@ MonoBehaviour:
   weight: 4.5
   groundProbeRadius: 0.3
   groundSnapTolerance: 0.02
+  actionSubset:
+  - BoxingStand
+  - BoxingMoveForward
+  - BoxingMoveBackward
+  - HurtFromForward
+  - HurtFromBackward
+  - BeatenFromForward
+  - BeatenFromBackward
+  - TurnBack
+  - Punch1
+  - Punch2
+  - Kick1
+  - TwinKick
+  - TwinKickAutoCombo
+  defaultActionId: BoxingStand
   moveSpeed: 4
   depthSpeedRate: 0.8
   laneRadius: 0.3

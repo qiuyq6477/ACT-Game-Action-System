@@ -204,6 +204,12 @@ public class ActionController : MonoBehaviour
             //Debug.Log("RootMotion distance " + RootMotionMove + "=>" + CurrentFrame + " - " + _wasFrame);
         }else RootMotionMove = Vector3.zero;
         
+        //落地这一拍先兑进预约列表，再让派生扫描去抢：两条都在同一个优先级池里比，
+        //所以落地不会吞掉同一拍挨的那一下（受击的预约优先级本来就有5）
+        //读的是上一拍 CharacterObj.Tick 留下的标志：动作拍在移动拍之前，落地检测发生在移动拍里
+        if (Owner && Owner.JustLanded && !string.IsNullOrEmpty(CurrentAction.landActionId))
+            _preorderActions.Add(new PreorderActionInfo(CurrentAction.landActionId));
+
         //动作是否要更换了：观察每个动作，如果他们可以cancel当前动作，并且操作存在，
         //那么就会添加到预约列表里面。硬直期间这个扫描照旧每tick都跑（今天就是这个行为）
         foreach (ActionInfo action in AllActions)
@@ -466,6 +472,9 @@ public class ActionController : MonoBehaviour
             //cue 游标停在起点的前一拍：从 startFrame 起（含）的每一条都还没发过，
             //而 startFrame 之前的不补发——从第20帧插入的招式不该把前面的挥空声重放一遍
             _cueCursor = startFrame - 1;
+            //起跳的初速度在换动作的这一拍给：本拍晚些时候的移动拍会用它算位移，
+            //于是"按下跳跃的那一拍"和"脚离开地面的那一拍"是同一拍，没有一拍的迟钝
+            if (Owner) Owner.Jump(aInfo.jumpUpSpeed);
             //顺便修一下面向。落地方式交给角色身上的 FacingApply：
             //3D 模型是绕 Y 转 90/270，精灵则是 localScale.x 取反——写死欧拉角的话精灵会侧对镜头变成一条线
             if (_facing) _facing.Apply(command.inversed);

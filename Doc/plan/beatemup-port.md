@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：规划中 · 2026-10
+> 状态：实施中（Step 1 已完成 1.1–1.7，剩 1.8/1.9 与 Step 2） · 2026-10
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -110,13 +110,13 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.4 ✅ | 导出工具 `Assets/Editor/AnimClipToActionTable.cs`（菜单 `Tools/ACT/导出 BeatEmUp 帧数据草稿`），把 41 条 clip 的窗口/盒子轨迹/cue 转成整数逻辑帧，产出 `beatemup-anim-dump.md` | 可疑值 0 条；命中帧集合按源工程的读法逐招对过（见第八节）；20 条编辑期用例全绿 |
 | 1.5 ✅ | 盒子轨迹（A）+ 帧事件表（B）+ cue 派发口（池化的接收者留给 1.7） | 六条新用例：cue 在该响的那一拍响且只响一次、顿挫只推迟不吞不重、循环每圈重放一次；轨迹每拍摆到表里的位置与尺寸（沿上一条、关掉就不写）、没填 track 一个数都不碰、两条表项抢同一个盒子时优先级高的说了算。`CueFire`/`BoxPose` 两个新分区稳态 0 B；编辑期用例 26/26 全绿 |
 | 1.6 ✅ | 派生门禁（C）+ 长按 Block（E）+ 种子化随机 `Dice` + 场上角色注册表 | 六条新用例：站着能接的地面招在半空接不出来；追击条件既查距离（x/z 两根轴）也查对方此刻的动作；Block 每拍登记所以按住期间每拍重新授予、松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；随机数只由种子与抽样次数决定（换帧率分法/换种子/退化点/取值范围）；函数名写错按不成立处理。32/32 全绿，稳态十一个分区 0 B |
-| 1.7 | 导入素材（连 `.meta`，保留 guid）+ 玩家整套招式表 | 逐招手感与 BeatEmUp 对拍；`GameMain.targetFrameRate` 30/60/120 三档行为一致 |
+| 1.7 ✅ | 玩家整套招式表（21 行，帧数据全部来自 1.4 的工具）+ 跳跃/落地（`jumpUpSpeed`/`landActionId`）+ HD-2D 呈现（精灵玩家 prefab、由表生成的平铺控制器、相机标定、只跟横向） | 36/36 全绿；30 与 120 两档下滞空拍数与最高点逐字一致；`PlayerPunch1` 端到端打到人（盒子当拍摆到表里的位置与尺寸）；稳态十一个分区 0 B。偏离与顺延见第八节 |
 | 1.8 | 抓取约束 + 投掷（D） | 被举者**逐 tick 跟随**（不复现一次性传送）；"扔敌人砸敌人"在解约束后仍能命中第三方 |
 | 1.9 | 伤害/HP/霸体/格挡结算（= refactor.md Phase 3）+ 命中路径的分配 | 用例：霸体未破→掉血但不切 Hurt；`hp<=0`→Death；格挡免伤但有 blockstun 与推开；`Doc/issue/hit-event-heap-alloc.md` 结掉 |
 
 ### Step 2：世界与流程
 
-输入采样层换成新版 Input System（`AddInput` 仍是唯一逻辑入口，改动隔离在 `SampleRenderFrame`）、敌兵 AI（决策心跳 + 进攻排队 + FOV，全部走 `AddInput` 进来）、`WaveManager`、一个正式关卡 + `LevelBound` 镜头推进、HUD 与选关、武器/道具/弹射物/可破坏物/`Surface`、视差背景、白闪 shader、`EntityManager` 与对象池。
+输入采样层换成新版 Input System（`AddInput` 仍是唯一逻辑入口，改动隔离在 `SampleRenderFrame`）、敌兵 AI（决策心跳 + 进攻排队 + FOV，全部走 `AddInput` 进来）、`WaveManager`、一个正式关卡 + `LevelBound` 镜头推进、HUD 与选关、武器/道具/弹射物/可破坏物/`Surface`、视差背景、白闪 shader、`EntityManager` 与对象池（含 1.5/1.7 顺延下来的 **cue 池化接收者**：音效、烟尘特效、镜头抖——`CueDispatch.Handler` 现在还是空的，帧事件只到"按拍派发"这一层）。
 
 ---
 
@@ -229,13 +229,33 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 
 三件互不相干但都属于"框架缺一条语义"的事一起做，加完之后的格局是：派生的成立条件从三条变成四条（窗口、标签、指令、**门禁**），输入有了"按住"，随机有了可复现的源。
 
-- **第四张函数表** `Methods/CancelConditionMethod.cs`，内置 `StateIs`（Grounded/Airborne/Any）与 `NearbyUnitInAction`（动作 id + 半径）。求值点插在 `ActionController.CanActionCancelCurrent` 里"标签相交 + 指令成立"之后——顺序就是成本：那条路径每拍对每个候选动作都跑，而门禁只在"真的差点要派生"时被问一次，所以参数允许留字符串（不分配、不解析出异常），烘焙成索引反而要多注册一层名字表。函数名认不出来**按不成立处理**并喊错：默认放行等于把门禁静默拆掉，而"这招在空中也能出"这种手感问题没人会怀疑到表里少了一个字母。`GameData.Load` 里加了一遍 `Validate`，为的是让 `"1,2"` 这种手滑在开机就喊，而不是等到战斗中间让 `float.Parse` 抛。
+- **第四张函数表** `Methods/CancelConditionMethod.cs`，内置 `StateIs`（Grounded/Airborne/Any）与 `NearbyUnitInCatalog`（分类 + 半径；1.6 当初建的是按动作 id 匹配的 `NearbyUnitInAction`，1.7 发现那样等于把门禁绑死在一行的名字上，改成了按分类）。求值点插在 `ActionController.CanActionCancelCurrent` 里"标签相交 + 指令成立"之后——顺序就是成本：那条路径每拍对每个候选动作都跑，而门禁只在"真的差点要派生"时被问一次，所以参数允许留字符串（不分配、不解析出异常），烘焙成索引反而要多注册一层名字表。函数名认不出来**按不成立处理**并喊错：默认放行等于把门禁静默拆掉，而"这招在空中也能出"这种手感问题没人会怀疑到表里少了一个字母。`GameData.Load` 里加了一遍 `Validate`，为的是让 `"1,2"` 这种手滑在开机就喊，而不是等到战斗中间让 `float.Parse` 抛。
 - **门禁查"别人在干什么"必须有注册表**：`CharacterObj.Units`（一个常驻 `List`），注册点放在 `BindBoxes`——那是 1.3 就定下的"用例可以自己叫的初始化入口"，EditMode 不跑 Awake；注销在 `OnDestroy`。没有它就只能 `FindGameObjectsWithTag`，每次调用全场景扫一遍还 new 数组。列表次序 = 各角色 Awake 次序、跨运行不稳定，所以注释里写明：以后的 AI 排队与目标选择必须自己按位置或 id 排序，别拿列表次序当平局裁决。
 - **长按 Block**：`KeyMap.Block` 每拍登记（放在非方向键那段节流**之外**，否则按住期间每隔 6 拍才留一条记录，而 `IsKeyHeld` 的窗口只有一拍，长按必然被读成松手），并且换动作时不清历史。清理规则单独抽成 `KeepAcrossActionChange`（方向键 + Block），**没有**把 Block 塞进 `IsDirectionInput`：那个函数说的是 3×3 方向语义，塞进去之后"没按方向"那一类判定全变成假话。有了"每拍都登记"，长按就不需要额外的 hold 状态机——`commands=[{[Block]}]` 的动作天然每拍重新成立，用例看到的正是这个：按住期间帧号每拍被打回起点，松手后按回看窗口再续两拍（那是输入缓冲本来的行为，注释里写明了不是 bug）。
 - **`Dice`**：xorshift128，四个 uint，纯整数。为什么不复用 `System.Random`：它的算法随运行时版本变；`UnityEngine.Random` 靠墙钟。两者都会让"同种子同帧率逐 tick 一致"这条从根上谈不上，而回放与以后做联网校验靠的就是它。`Chance(int percent)` 用整数百分比而不是 `Next01() < 0.3f`：0.3 在二进制里无限循环，边界上的抽样结果依赖实现。取值范围用"乘完取高位"而不是取模+拒绝采样——后者一次判定抽走几个数取决于运气，**抽样次数**本身成了不确定源，这是本工程最不能容忍的一种岔开。种子在 `GameMain.randomSeed`，默认是常量：调手感时能一帧不差复现同一局，比每次换一种随机分布有用。
 - 顺带：`ActionController` 需要看 CharacterObj 的状态，加了 lazily 取的 `Owner`（不写 Inspector、也不在 Awake 里取，因为 EditMode 不跑 Awake，跟 `BindBoxes` 同一个道理）。
 
 **验证**：编辑期用例 **32/32 全绿**（新增第 13 区六条：空中接不出地面招、追击同时查距离与对方动作、长按每拍重新授予、清历史留 Block 掉 Punch、随机数只由种子与次数决定、函数名写错按不成立）；Play Mode 稳态十一个分区 `avg=0 max=0`。已知测不到的半边：`SampleRenderFrame` 里"Block 不吃节流"要真键盘，EditMode poll 不到，代码位置与注释已标出，Step 2 换 Input System 时一并接回去。
+
+
+### 切片 1.7 玩家整套招式表 + HD-2D 呈现 · 已实施 · 2026-10
+
+这一片是第一次"用真表跑真角色"：招式表从 13 行变 34 行（新增 21 行玩家招式），场景里的玩家换成精灵玩家，1.1 挪出来的三项呈现（精灵入 3D、`FacingApply` 选 `SpriteScaleX`、相机标定）在这里落地。
+
+- **帧数据全部来自 1.4 的导出工具**，21 行里没有一格是手数的：窗口 `min = 抬起帧 / max = 落下帧 − 2`，`track` 与 `cues` 直接粘工具产出的 JSON，`durationFrames` 由 `Tools/ACT/打印动作时长` 逐行核对（34 行全 ✓，零漂移）。
+- **跳跃是这一片唯一必须新增的框架能力**：`ActionInfo.jumpUpSpeed` 在换动作那一拍交给 `CharacterObj.Jump`，飞行与落下全由 `weight` 的重力积分决定，落地那一拍由 `landActionId` 切动作。为什么不用 `.anim` 里那条 y 位移曲线当 root motion：源工程那条曲线不认识地面在哪，跳上高台、从台边走下去、落在坑里全都得是真物理。标定按源工程反推：`jumpHeight 3.5 / jumpGravity 3.8 / jumpSpeed 3.5` 在 50Hz 下积出**最高点 1.61 单位、滞空 0.527 秒**，本工程用 `weight 0.8 + jumpUpSpeed 12.4` 得到**最高点 1.5、滞空 30 个逻辑帧**（=0.5 秒），跟 `PlayerJump` 那 31 拍的片子基本同长短——两边都是"落地那一拍正好片子也快走完"。
+- **`CharacterObj.Jump` 里那句"顺手把状态改成 Airborne"不是多余**：`Move()` 有一条"这一列探不到地面就把下落速度清零"，那是给走下平台边缘用的，而起飞的第一拍恰好也探不到地面——不改状态，初速度会在同一拍被自己抹掉，人只会原地抖一下。用例 `JumpRisesByTableSpeedAndLandsIntoTheLandAction` 钉的就是这一拍。
+- **两处与源工程的偏离**：① 源工程整段 clip 播完才换招，这里换成表里真实的中途取消窗口（`PlayerPunch1` 第 9 拍起可接 `Punch2/Kick3`），所以"逐招手感对拍"对的是**招式与节奏**而不是逐帧；② 落地硬直 16 拍改成"前 6 拍硬、第 7 拍起允许 InitAction/RunTag 挤进来"，否则跳一下要锁 0.27 秒，连段手感全没。
+- **`NearbyUnitInAction` 改名成 `NearbyUnitInCatalog`**（1.6 的那条门禁）：倒地追击要问的是"近处有没有人躺着"，而玩家躺下是 `PlayerKnockDownGrounded`、敌兵躺下是 `BeatenFromForward`——按动作 id 匹配等于把门禁绑死在其中一行的名字上，改成按 `catalog` 匹配（两边同为 `Beaten`）之后敌兵换什么 id 都不影响。顺带发现追击行与普攻同键同 tag，必须靠 `priority` 20 > 10 才压得过，光有门禁不够。
+- **撞出来的两条表规矩**（都进了 `Assets/Scripts/AGENTS.md`）：① 派生候选同分时赢的是**表里靠前的那一行**，所以 `PlayerIdle` 一开始挂着 `InitAction` + `[NoDirection]` 指令等于"每拍自己挤自己一次"，而它是全表第一条——站着按拳一个都出不来。demo 的 `BoxingStand` 从来不挂 tag，道理就在这。② 攻击类一律 `priority 10`、倒地追击 `20`、移动类 `0`：`PlayerRun` 每拍自取消（这正是它的 `autoTerminate` 认出松手的手段），派生不压过它就永远出不来。用例 `RealTableAttackBeatsTheStandingAndRunningSelfCancel` 用真表钉住这两条。
+- **两家招式不能同表在场**：demo 的 `Punch2` 与移植的 `PlayerPunch2` 都挂 `"Punch2"` 这个 tag 字面量，全表在场时后者优先级更高，会把前者的连招抢走（第 1、2、3 区三条老用例就是这么红的）。修法是**每个角色都必须填 `actionSubset`**：`Player.prefab` 与场景里那两个敌兵给 demo 那 13 行，精灵玩家给 `Player*` 那 21 行；用例里"用真表"的那几条也按家族取子集（`FamilyOf`）。
+- **HD-2D 呈现**：新增 `Assets/Resources/BeatEmUpPlayer.prefab`——根节点挂 `SpriteRenderer`（clip 的 `m_Sprite` 曲线绑定路径是空的，精灵必须和 Animator 同物体）+ Animator（控制器由新工具 `Tools/ACT/生成 BeatEmUp 玩家的 AnimatorController` 从表吹出来，21 个状态、0 条转换）+ `FacingApply(SpriteScaleX)`，子节点 `WeaponPos`（名字必须和 clip 的绑定路径一字一样）与 `BeatHitBox`（**故意不叫源工程的 `HitBox`**：clip 里那 34 条 `HitBox` 的开关/位置/缩放曲线现在全归招式表管，重名等于让 Animator 和表抢同一个方向盘）。相机没动：透视、fov 69.1°、离角色所在那一列 4 米，竖直方向 5.5 个世界单位，正好等于源工程那台正交相机（size 2.8 → 5.6 单位）的取景高度；PPU 50 下 1.2 单位高的精灵占屏幕 22%，与源工程一致。`GameMain.LateUpdate` 的跟随改成**只跟横向**——跟了 y 的话跳起来相机一起抬等于没跳，跟了 z 的话远车道的人永远和近车道一样大。
+- **派生资产必须读盘校验**：控制器第一版用 `new AnimatorController() + AddLayer + CreateAsset` 吹出来是个空壳（`m_StateMachine: {fileID: 0}`），工具日志报"建了 21 个状态"而盘上一个都没有，Play 里的表现是姿势永远停在 prefab 那一帧——只有读回来数一遍才发现。改用 `AnimatorController.CreateAnimatorControllerAtPath`，并把"读盘数状态"写成工具自己的验收。
+- **`打印动作时长` 改成扫多个控制器**：现在场上两套骨架（3D 骨骼 + 精灵），只盯 `Player.prefab` 一张控制器的话，另一家的 21 个 animKey 全会被误报成"找不到状态"。改成遍历 `Assets/Resources` 下每个 prefab 自己那张控制器。
+
+**验证**：编辑期用例 **36/36 全绿**（第 15 区三条：起跳那一拍就离地 + 滞空 30 拍 + 最高点 1.5 + 一次起跳只落地一次 + 落地切 `landActionId`；真表里站着按拳与边跑边按拳都出得来；空中再按跳跃不出二段跳而按拳出空中技）。Play Mode 端到端：一记 `PlayerPunch1` 打到敌兵（`hits=1`、敌兵切 `HurtFromForward`、被推开 0.35 米、盒子当拍摆到表里的 `(0.6476, 0.5548)` 与尺寸 `(0.91, 0.75, 0.50)`）；一次跳跃从按下到 `PlayerLand` 31 个逻辑帧、最高点 1.44（采样相位差）；`targetFrameRate` 30 与 120 两档下滞空拍数与最高点**逐字一致**（30 帧档 31 拍 / 120 帧档 31 拍）；稳态十一个分区 `avg=0 max=0`。截图确认精灵在渲染、朝向正确、跳起不穿地。
+
+**顺延**：cue 的**池化接收者**（音效/特效/震镜头）本片仍没接——`CueDispatch.Handler` 是空的，帧事件只到"按拍派发"这一层，响不出声。它需要连音频资产一起导入，且和 `EntityManager`/对象池是同一件事，挪进 Step 2。敌兵也还是 3D 灰盒（源工程的敌兵贴图缺 `.meta`）。
 
 
 ### 顺带：恢复闸门

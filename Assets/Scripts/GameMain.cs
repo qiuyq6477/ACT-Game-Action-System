@@ -52,6 +52,15 @@ public class GameMain : MonoBehaviour
     /// </summary>
     public uint randomSeed = Dice.DefaultSeed;
 
+    /// <summary>
+    /// 相机在场景里摆好的那个位置，Awake 里记一次：LateUpdate 每帧都要改写相机位置，
+    /// 而它只该动横向，高度与纵深必须有个不被污染的原始值可回读。
+    /// HD-2D 的标定就体现在这里——距离与 fov 决定"一米在屏幕上占多少像素"，
+    /// 现在这台相机（fov 69.1°、离角色所在那一列 4 米）在竖直方向上给出约 5.5 个世界单位，
+    /// 正好是源工程那台正交相机（size 2.8，也就是 5.6 个单位）的取景高度
+    /// </summary>
+    private Vector3 _camBase;
+
     void Awake()
     {
         //随机源必须在第一个逻辑帧之前定好种子，否则头几次抽样用的还是静态初始值
@@ -77,6 +86,9 @@ public class GameMain : MonoBehaviour
         enemy.CopyTo(_all, 1);
 
         _boxBuffer = new Collider[64];
+
+        //相机自己在场景里摆好的位置先记下来，LateUpdate 之后每帧只改横向那一个分量
+        _camBase = usingCam.transform.position;
     }
 
     private void Update()
@@ -151,8 +163,10 @@ public class GameMain : MonoBehaviour
 
     private void LateUpdate()
     {
-        Vector3 baseCamPos = new Vector3(2, 2.4f, -4);
-        usingCam.transform.position = baseCamPos + player.transform.position;
+        //只跟横向。高度跟着抬的话跳起来等于没跳（相机一起升），
+        //纵深跟着走的话远车道的人永远和近车道一样大，HD-2D 的透视就白给了。
+        //高度与纵深就用场景里摆好的那一个值，真正的跟随相机（含关卡边界推进）在 Step 2
+        usingCam.transform.position = new Vector3(_camBase.x + player.transform.position.x, _camBase.y, _camBase.z);
     }
 
     /// <summary>

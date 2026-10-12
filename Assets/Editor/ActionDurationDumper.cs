@@ -15,16 +15,32 @@ using UnityEngine;
 /// </summary>
 public static class ActionDurationDumper
 {
-    private const string PrefabPath = "Assets/Resources/Player.prefab";
     private const string TablePath = "Assets/Resources/GameData/Action.json";
+    /// <summary>
+    /// 角色 prefab 放的地方。时长校对要读的是 prefab 上那张控制器，所以这里只扫这个目录，
+    /// 不去碰美术目录里那些与招式表无关的控制器
+    /// </summary>
+    private const string PrefabFolder = "Assets/Resources";
 
     [MenuItem("Tools/ACT/打印动作时长（填 durationFrames 用）")]
     public static void Dump()
     {
-        AnimatorController controller = LoadController();
-        if (controller == null) return;
-
-        Dictionary<string, float> seconds = StateLengths(controller);
+        //状态长度来自**每个角色 prefab 自己那张控制器**：现在场上有两套骨架
+        //（3D 骨骼的 Player.prefab 和 HD-2D 精灵的 BeatEmUpPlayer.prefab），
+        //只盯着一张的话，另一家的 animKey 全会被误报成"找不到状态"
+        Dictionary<string, float> seconds = new Dictionary<string, float>();
+        foreach (string path in AssetDatabase.FindAssets("t:Prefab", new[] { PrefabFolder }))
+        {
+            string assetPath = AssetDatabase.GUIDToAssetPath(path);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            AnimatorController controller = ControllerOf(prefab, assetPath);
+            if (controller) CollectInto(controller, seconds);
+        }
+        if (seconds.Count == 0)
+        {
+            Debug.LogError(PrefabFolder + " 下面一个带 AnimatorController 的 prefab 都没有：状态长度量不到");
+            return;
+        }
 
         TextAsset table = AssetDatabase.LoadAssetAtPath<TextAsset>(TablePath);
         if (!table)
@@ -108,40 +124,36 @@ public static class ActionDurationDumper
               .Append(" 从第 ").Append(range.min).Append(" 帧开，但这个动作只有 ").Append(durationFrames).Append(" 帧\n");
     }
 
-    private static AnimatorController LoadController()
+    /// <summary>
+    /// 这个 prefab 根节点上的 Animator 挂的那张控制器。挂的不是单个 AnimatorController（比如 AnimatorOverrideController）
+    /// 就量不了，宁可喊出来也不要悄悄少一家
+    /// </summary>
+    private static AnimatorController ControllerOf(GameObject prefab, string assetPath)
     {
-        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
-        if (!prefab)
-        {
-            Debug.LogError("找不到 " + PrefabPath);
-            return null;
-        }
-
+        if (!prefab) return null;
         Animator animator = prefab.GetComponent<Animator>();
-        if (!animator)
+        if (!animator) return null;
+        if (!animator.runtimeAnimatorController)
         {
-            Debug.LogError(PrefabPath + " 上没有 Animator");
+            Debug.LogWarning(assetPath + " 的 Animator 没挂控制器，这个角色的 animKey 校对不到");
             return null;
         }
-
         AnimatorController controller = animator.runtimeAnimatorController as AnimatorController;
         if (!controller)
-            Debug.LogError("Animator 挂的不止一个控制器或者不是 AnimatorController，量不到状态长度");
+            Debug.LogError(assetPath + " 挂的不止一个控制器或者不是 AnimatorController，量不到状态长度");
         return controller;
     }
 
     /// <summary>
-    /// 状态名 → 秒。注意这里的键是Animator状态名（表里的animKey就是它），不是clip名，两者不同名
+    /// 状态名 → 秒。注意这里的键是Animator状态名（表里的animKey就是它），不是clip名，两者可以不同名
     /// </summary>
-    private static Dictionary<string, float> StateLengths(AnimatorController controller)
+    private static void CollectInto(AnimatorController controller, Dictionary<string, float> seconds)
     {
-        Dictionary<string, float> seconds = new Dictionary<string, float>();
         foreach (AnimatorControllerLayer layer in controller.layers)
-            Collect(layer.stateMachine, seconds);
-        return seconds;
+            Collect(layer.stateMachine, seconds, controller.name);
     }
 
-    private static void Collect(AnimatorStateMachine stateMachine, Dictionary<string, float> seconds)
+    private static void Collect(AnimatorStateMachine stateMachine, Dictionary<string, float> seconds, string fromController)
     {
         foreach (ChildAnimatorState child in stateMachine.states)
         {
@@ -155,13 +167,14 @@ public static class ActionDurationDumper
             }
 
             if (seconds.ContainsKey(state.name))
-                Debug.LogWarning("状态名 " + state.name + " 重复，表里的animKey会随机撞到其中一个，先改名");
+                Debug.LogWarning("状态名 " + state.name + " 在 " + fromController + " 与其他控制器的状态重名，" +
+                                 "表里的 animKey 会随机撞到其中一个，先改名");
 
             //状态上的speed会把播放时长缩放，所以要除掉；这工程里现在全是1
             seconds[state.name] = state.speed == 0f ? clip.length : clip.length / state.speed;
         }
 
         foreach (ChildAnimatorStateMachine sub in stateMachine.stateMachines)
-            Collect(sub.stateMachine, seconds);
+            Collect(sub.stateMachine, seconds, fromController);
     }
 }

@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的九件事：
+/// 钉的十件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -34,12 +34,19 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    函数名写错时门禁按"不成立"处理而不是放行。
 /// 9. 每角色自己的动作子集（切片 1.7 的前置）：分类候选建在角色自己那份表上，
 ///    不会把"这个角色根本不会的招式"端上候选。
+/// 10. 跳跃与落地（BeatEmUp 移植切片 1.7）：表里的 jumpUpSpeed 在换动作那一拍就把人带离地面
+///    （而不是被地面探测当成「走下平台」清零）、滞空拍数与最高点由 weight 和初速度一起标定出来、
+///    一次起跳只落地一次、落地那一拍切到 landActionId；真表里站着按拳和边跑边按拳都出得来
+///    （平局必须由 priority 裁决，不能由填表顺序）；空中再按跳跃不出二段跳、按拳出空中技。
+///    【这一区的表行是真表】：1.7 之后「按拳出不出来」已经是表数据决定的事，拿现造的表项测等于没测。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
 /// 第11区（相交采样）另外把判定盒拍和采样拍也跑起来，因为它断言的就是"打到没有"；
 /// 第12区把判定盒拍也跑起来，因为它断言的是盒子被摆到哪；
-/// 第13区大多只跑到动作拍，只有制造滞空那一处要额外走一拍移动拍（地面探测在那一拍里写 State）。
+/// 第13区大多只跑到动作拍，只有制造滞空那一处要额外走一拍移动拍（地面探测在那一拍里写 State）；
+/// 第15区整条抛物线都要跑，所以它既跑移动拍，也自己摆一块 Ground 层的面板当地面——
+/// EditMode 没有场景，不造地面角色就一路往下掉。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -73,6 +80,7 @@ public class ActionFrameClockTests
         //派发口是静态的：留着不动，下一个用例就会收到上一个角色的 cue
         CueDispatch.Handler = null;
         if (_targetRig != null) Object.DestroyImmediate(_targetRig);
+        if (_groundRig != null) Object.DestroyImmediate(_groundRig);
         Object.DestroyImmediate(_rig);
     }
 
@@ -88,9 +96,29 @@ public class ActionFrameClockTests
         _action.Tick();
     }
 
+    /// <summary>
+    /// 用真表把某个动作开跑。
+    /// 【给的是子集而不是全表】：demo 的拳击行和移植进来的玩家行共用同一批 cancel tag 字面量
+    /// （demo 的 Punch2 与玩家的 PlayerPunch2 都挂 "Punch2"），全表在场时玩家那一行优先级更高，
+    /// 会把 demo 的连招抢走。这不是框架的错，是"每个角色只该拿自己那几行"的又一次证明——
+    /// 运行期由 prefab 上的 actionSubset 说清楚，用例这边按 id 前缀分家
+    /// </summary>
     private void StartAction(string id)
     {
-        _action.SetAllActions(GameData.AllActions(), id);
+        _action.SetAllActions(GameData.ActionsFor(FamilyOf(id)), id);
+    }
+
+    /// <summary>
+    /// 全表按 id 前缀分成两家：Player 打头的是移植进来的玩家招式，其余是 demo 的拳击招式。
+    /// 【为什么按前缀而不是写两份清单】：这两家本来就是靠命名分开的，写死清单等于再多一个会忘的地方
+    /// </summary>
+    private static string[] FamilyOf(string id)
+    {
+        bool ported = id.StartsWith("Player");
+        List<string> ids = new List<string>();
+        foreach (ActionInfo info in GameData.AllActions())
+            if (info.id.StartsWith("Player") == ported) ids.Add(info.id);
+        return ids.ToArray();
     }
 
     /// <summary>
@@ -163,7 +191,10 @@ public class ActionFrameClockTests
         {
             Tick();
 
-            //帧号对不上，说明这一tick的末尾动作被换掉或回绕了
+            //帧号对不上只有两种可能，而它们的掩码规矩正好相反：
+            //【真换了动作】ChangeAction 把两个掩码清零（判定盒当帧就该是关的）；
+            //【同一行回绕】keepPlayingAnim 的行自己接自己，走的是 KeepAction 而不是 ChangeAction，
+            //  盒子还是那一行的盒子，掩码必须留着——清掉就等于站着的人受击盒每二十几帧闪一帧
             bool keptRunning = _action.CurrentFrame == frame;
             if (keptRunning)
             {
@@ -171,6 +202,10 @@ public class ActionFrameClockTests
                     id + " 第" + frame + "帧的攻击盒掩码");
                 Assert.AreEqual(ExpectedBeHitMask(info, frame), _action.ActiveBeHitBoxMask,
                     id + " 第" + frame + "帧的受击盒掩码");
+            }
+            else if (_action.CurrentAction.id == id)
+            {
+                Assert.AreEqual(0, _action.CurrentFrame, id + "：这一拍是回绕，帧号该回到起点而不是别的动作的帧号");
             }
             else
             {
@@ -1256,7 +1291,7 @@ public class ActionFrameClockTests
     }
 
     /// <summary>
-    /// 「近处有一个正倒在 KnockdownGrounded 的对手」才允许的追击。
+    /// 「近处有一个当前动作属于 Beaten 分类的对手」才允许的追击。
     /// 距离只算 x 与 z：横向隔开三米、或者同侧前后错开三米，都不该算近
     /// </summary>
     [Test]
@@ -1266,11 +1301,11 @@ public class ActionFrameClockTests
         ActionInfo[] table =
         {
             Waiting("Long", "PursuitGate"),
-            Comeback("GroundPursuit", "PursuitGate", Cond("NearbyUnitInAction", "KnockdownGrounded", "1.2"),
+            Comeback("GroundPursuit", "PursuitGate", Cond("NearbyUnitInCatalog", "Beaten", "1.2"),
                 KeyMap.Kick),
         };
-        PutTargetIn("KnockdownGrounded", new Vector3(0.8f, 0f, 0f));
-        Assert.IsTrue(CharacterObj.AnyOtherInAction(_character, "KnockdownGrounded", 1.2f),
+        PutTargetIn("Beaten", new Vector3(0.8f, 0f, 0f));
+        Assert.IsTrue(CharacterObj.AnyOtherInCatalog(_character, "Beaten", 1.2f),
             "前提：靶子确实躺在 1.2 米以内，位置 " + _rig.transform.position + " / " +
             _targetRig.transform.position + "——不成立就说明注册表或距离算错了，跟门禁无关");
 
@@ -1279,32 +1314,34 @@ public class ActionFrameClockTests
         Assert.AreEqual("GroundPursuit", _action.CurrentAction.id, "零点八米外躺着一个人，追击必须成立");
 
         StartCustom(table);
-        PutTargetIn("KnockdownGrounded", new Vector3(3f, 0f, 0f));
+        PutTargetIn("Beaten", new Vector3(3f, 0f, 0f));
         Tick(KeyMap.Kick);
         Assert.AreEqual("Long", _action.CurrentAction.id, "横向三米已经超出 1.2 米半径，不该追");
 
         StartCustom(table);
-        PutTargetIn("KnockdownGrounded", new Vector3(0.8f, 0f, 3f));
+        PutTargetIn("Beaten", new Vector3(0.8f, 0f, 3f));
         Tick(KeyMap.Kick);
         Assert.AreEqual("Long", _action.CurrentAction.id,
             "纵深错开三米是另一个车道的人，横版里不该算近——所以距离必须算 x 和 z 两根轴");
 
         StartCustom(table);
-        PutTargetIn("EnemyWalk", new Vector3(0.8f, 0f, 0f));
+        PutTargetIn("Stand", new Vector3(0.8f, 0f, 0f));
         Tick(KeyMap.Kick);
         Assert.AreEqual("Long", _action.CurrentAction.id,
-            "人还站着（当前动作不是 KnockdownGrounded）就不许追击倒地技——条件查的是动作，不只是距离");
+            "人还站着（当前动作不属于 Beaten 分类）就不许追击倒地技——条件查的是动作，不只是距离");
     }
 
     /// <summary>
-    /// 把靶子摆到"离我 offset 那么远"、并让它正处于某个动作。
+    /// 把靶子摆到"离我 offset 那么远"、并让它当前动作属于某个分类。
     /// 【相对位置】：靶子的绝对坐标要跟着宿主走，写死绝对值等于假设 prefab 的原点在 (0,0,0)，
     /// 那是 prefab 的事而不是用例的事
     /// </summary>
-    private void PutTargetIn(string actionId, Vector3 offset)
+    private void PutTargetIn(string catalog, Vector3 offset)
     {
         _targetRig.transform.position = _rig.transform.position + offset;
-        _target.action.SetAllActions(new List<ActionInfo> {Row(actionId, 60, null)}, actionId);
+        ActionInfo down = Row(catalog + "Row", 60, null);
+        down.catalog = catalog;
+        _target.action.SetAllActions(new List<ActionInfo> { down }, down.id);
     }
 
     /// <summary>
@@ -1458,9 +1495,11 @@ public class ActionFrameClockTests
         Assert.AreEqual("HurtFromForward", _action.CurrentAction.id,
             "前提：整张表在场时 byCatalog 会挑到 Hurt 那一类");
 
+        int allBefore = GameData.AllActions().Count;
         _action.SetAllActions(GameData.ActionsFor(new[] {"BoxingStand", "Punch1"}), "Punch1");
         Assert.AreEqual(2, _action.AllActions.Count, "这个角色现在只会两招");
-        Assert.AreEqual(13, GameData.AllActions().Count, "ActionsFor 只挑不改，全表还是 13 行");
+        Assert.AreEqual(allBefore, GameData.AllActions().Count,
+            "ActionsFor 只挑不改：全表行数不许因为挑了一次子集就变（它返回的是新建的 List，不是共享那一份）");
 
         _action.PreorderActionByActionChangeInfo(HurtByCatalog(), ForceDirection.Forward);
         Tick();
@@ -1471,5 +1510,148 @@ public class ActionFrameClockTests
     private static ActionChangeInfo HurtByCatalog()
     {
         return new ActionChangeInfo {changeType = ActionChangeType.ChangeByCatalog, param = "Hurt"};
+    }
+
+    //==================================== 15. 跳跃、落地与派生优先级（切片 1.7） ====================================
+    //
+    // 这一区是真表上场的第一处：1.7 把玩家招式灌进 Action.json 之后，
+    // 「站着按拳出不出来」「空中能不能再跳一次」这种事已经由**表数据**决定了，
+    // 用现造的表项测就等于没测——所以这几条都从 GameData 里取真行。
+
+    private GameObject _groundRig;
+
+    /// <summary>
+    /// 在脚下摆一块 Ground 层的面板，上表面正好在 surfaceY。
+    /// 【为什么用例要自己造地面】：EditMode 没有场景，prefab 底下什么都是空的，
+    /// 而这一区要断言的是「起飞—滞空—落地」这条只有地形才能走完的路
+    /// </summary>
+    private void BuildGround(float surfaceY)
+    {
+        int layer = LayerMask.NameToLayer("Ground");
+        Assert.AreNotEqual(-1, layer, "前提：工程里要有 Ground 层，否则地面探测永远落空");
+        _groundRig = new GameObject("ACT-Test-Ground");
+        _groundRig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        _groundRig.layer = layer;
+        //盒子中心在地面下方半个厚度处：上表面就正好是 surfaceY
+        _groundRig.transform.position = new Vector3(0f, surfaceY - 0.5f, 0f);
+        BoxCollider col = _groundRig.AddComponent<BoxCollider>();
+        col.size = new Vector3(60f, 1f, 60f);
+    }
+
+    /// <summary>
+    /// 跑完整一拍：时钟→输入→动作→角色计时与移动。
+    /// 顺序照 GameMain.TickAll，只略掉了与这一区无关的相交采样与命中结算两拍
+    /// </summary>
+    private void TickWithMove(params KeyMap[] pressed)
+    {
+        Tick(pressed);
+        _character.Tick();
+    }
+
+    /// <summary>
+    /// 表里的 jumpUpSpeed 在换动作那一拍变成真的初速度，飞行由重力积分，落地那一拍切到 landActionId。
+    /// 【这一条钉的是三件事】：初速度没被地面探测抹掉、滞空拍数与 weight/jumpUpSpeed 的标定一致、
+    /// 落地不等片子播完。三件事以前都没有消费者，也就都没有约束
+    /// </summary>
+    [Test]
+    public void JumpRisesByTableSpeedAndLandsIntoTheLandAction()
+    {
+        BuildGround(_rig.transform.position.y);
+        //重力由用例自己标，不靠 prefab 上的值：滞空拍数就是这两个数除出来的
+        _character.weight = 0.8f;
+        ActionInfo up = Comeback("Up", "JumpGate", Cond("StateIs", "Grounded"), KeyMap.Jump);
+        up.durationFrames = 31;
+        up.jumpUpSpeed = 12.4f;
+        up.landActionId = "Down";
+        StartCustom(Waiting("Idle", "JumpGate"), up, Row("Down", 16, null));
+
+        float footY = _rig.transform.position.y;
+        TickWithMove(KeyMap.Jump);
+        Assert.AreEqual("Up", _action.CurrentAction.id, "按跳跃的那一拍就该进起跳动作");
+        Assert.AreEqual(MoveState.Airborne, _character.State, "起跳这一拍就要算空中");
+        Assert.Greater(_rig.transform.position.y, footY,
+            "起跳的第一拍必须离地。Move() 里「这一列探不到地面」那条会把下落速度清零（那是给走下平台用的），" +
+            "而起飞的那一拍同样探不到地面——不先把状态改成 Airborne，初速度会在同一拍被自己抹掉，人只会原地抖一下");
+
+        float highest = 0f;
+        int landCount = 0;
+        int landedOnTick = -1;
+        for (int i = 0; i < 50; i++)
+        {
+            TickWithMove();
+            highest = Mathf.Max(highest, _rig.transform.position.y - footY);
+            if (_character.JustLanded)
+            {
+                landCount++;
+                if (landedOnTick < 0) landedOnTick = i;
+            }
+        }
+
+        Assert.AreEqual(1, landCount, "一次起跳只该落地一次，落地标志必须只在一拍为真");
+        //v0=12.4、每拍加 0.8 → 第 30 拍恰好回到地面（12.4·n = 0.4·n(n+1) 的整数解），最高点在第 15 拍、1.5 米。
+        //断言留一格余量：高度是连加出来的，最后一位的浮点差别会决定它是第 29 拍还是第 30 拍贴地
+        Assert.GreaterOrEqual(landedOnTick, 27, "滞空只有 " + (landedOnTick + 2) + " 拍：重力或初速度与动画时长脱钩了");
+        Assert.LessOrEqual(landedOnTick, 30, "滞空拖到 " + (landedOnTick + 2) + " 拍：PlayerJump 的 31 拍早就该被落地掐断");
+        Assert.AreEqual(1.5f, highest, 0.05f, "最高点就该是 1.5 米，这是 weight 与 jumpUpSpeed 一起标定的结果");
+        Assert.AreEqual(footY, _rig.transform.position.y, 1e-4f, "落地那一拍要贴回地面，不许陷进地里或悬着");
+
+        TickWithMove();
+        Assert.AreEqual("Down", _action.CurrentAction.id,
+            "落地那一拍的下一拍切到 landActionId：标志在移动拍里写、动作拍在它之后，所以差一拍，" +
+            "而那已经贴地的 16 毫秒里没有任何视觉破绽");
+        Assert.AreEqual(MoveState.Grounded, _character.State, "落地之后状态要翻回地面，不然会一直飘");
+    }
+
+    /// <summary>
+    /// 站着按拳、边跑边按拳，都必须真的出拳。
+    /// 【这条不是假想病】：PlayerIdle 一开始跟别的地面招一样挂着 InitAction 和一条 [NoDirection] 指令，
+    /// 于是它每一拍都能挤掉自己一次；而冒泡比优先级时同分取的是 AllActions 里靠前的那条，
+    /// PlayerIdle 恰好是全表第一条——结果站着按拳一个都出不来。demo 的 BoxingStand 从来不挂 tag，就是这个道理
+    /// </summary>
+    [Test]
+    public void RealTableAttackBeatsTheStandingAndRunningSelfCancel()
+    {
+        _action.SetAllActions(GameData.ActionsFor(new[] {"PlayerIdle", "PlayerRun", "PlayerPunch1"}), "PlayerIdle");
+        Tick();
+        Assert.AreEqual("PlayerIdle", _action.CurrentAction.id, "开场动作就是站立");
+
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("PlayerPunch1", _action.CurrentAction.id, "站着按拳必须出拳");
+
+        //重新开场再试跑动：上一拍那记拳还开着，PlayerPunch1 的窗口要到第 9 拍才允许派生，
+        //而它此刻正是当前动作——不从站立重来一遍，测到的是连招窗口而不是优先级
+        _action.SetAllActions(GameData.ActionsFor(new[] {"PlayerIdle", "PlayerRun", "PlayerPunch1"}), "PlayerIdle");
+        Tick(KeyMap.Forward);
+        Assert.AreEqual("PlayerRun", _action.CurrentAction.id, "前提：按住方向键就该进跑动");
+        Tick(KeyMap.Forward, KeyMap.Punch);
+        Assert.AreEqual("PlayerPunch1", _action.CurrentAction.id,
+            "跑动每拍都自取消一次（这正是它的 autoTerminate 能认出「松手了」的手段），" +
+            "所以派生必须靠 priority 压过它，而不是靠填表顺序——表顺序是最查不出来的一种平局");
+    }
+
+    /// <summary>
+    /// 空中再按一次跳跃不许变成二段跳，但空中按拳要出空中技。
+    /// 【两条一起断言】：它们共用同一个 tag（AirAttackTag），把跳跃自己也算上就得到前者，
+    /// 忘了把跳跃的 beCancelledTag 打开就得到后者的反面
+    /// </summary>
+    [Test]
+    public void AirborneDoesNotReJumpButDoesAirAttack()
+    {
+        _action.SetAllActions(
+            GameData.ActionsFor(new[] {"PlayerIdle", "PlayerJump", "PlayerJumpAttackPunch"}), "PlayerIdle");
+        Assert.AreEqual(MoveState.Grounded, _character.State, "前提：还没走移动拍，算站在地上");
+
+        Tick(KeyMap.Jump);
+        Assert.AreEqual("PlayerJump", _action.CurrentAction.id, "真表里跳跃键（103）指令对应的就是这一行");
+        Assert.AreEqual(MoveState.Airborne, _character.State, "表里的 jumpUpSpeed 在换动作那一拍就把状态改成了空中");
+
+        Tick(KeyMap.Jump);
+        Assert.AreEqual("PlayerJump", _action.CurrentAction.id,
+            "空中再按一次不许再跳：起跳那行自己不带 AirAttackTag，所以它挤不掉自己。" +
+            "带了的话跳跃键按两下就能一路往上窜，而这件事在 30fps 下还特别难看出来");
+
+        Tick(KeyMap.Punch);
+        Assert.AreEqual("PlayerJumpAttackPunch", _action.CurrentAction.id,
+            "空中攻击才是 AirAttackTag 的消费者：跳跃的 beCancelledTag 只开这一个口子");
     }
 }
