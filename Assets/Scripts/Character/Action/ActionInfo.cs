@@ -131,6 +131,12 @@ public struct ActionInfo
     public ScriptMethodInfo rootMotionTween;
 
     /// <summary>
+    /// rootMotionTween.param 在 GameData.Load 里烘焙出来的数值，运行期只读它，不再解析字符串。
+    /// 【不是填表数据】：JsonUtility 会跳过 [NonSerialized]，所以表里不用也没有这个字段
+    /// </summary>
+    [NonSerialized] public RootMotionParam rootMotionParam;
+
+    /// <summary>
     /// 优先级
     /// 一个动作的基础优先级，优先级越高的动作越可能被选中
     /// </summary>

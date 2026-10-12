@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -51,23 +50,33 @@ public class BeHitBox : MonoBehaviour
     /// </summary>
     public bool Active { get; private set; }
 
+    /// <summary>
+    /// tags烘焙出来的位掩码，开关和命中判定都用它，不再比对字符串
+    /// </summary>
+    public int TagMask { get; private set; }
+
+    /// <summary>
+    /// 把Inspector上填的tags翻译成位掩码。
+    /// 由CharacterObj.Awake顺带调用（那里本来就要遍历子组件认主人），
+    /// 一定要在任何Update之前完成，否则盒子会以为自己的标签谁都不是
+    /// </summary>
+    public void BakeTagMask()
+    {
+        TagMask = BoxTagRegistry.MaskOf(tags);
+    }
+
     private void Update()
     {
-        Active = master && master.ShouldBeHitBoxActive(tags);
+        Active = master && master.ShouldBeHitBoxActive(TagMask);
     }
 
     /// <summary>
-    /// 是否有一个tag在checkTags里面
+    /// 这个盒子的标签有没有撞上给定的那组标签
     /// </summary>
-    /// <param name="checkTags"></param>
+    /// <param name="checkMask">要比对方的标签掩码</param>
     /// <returns></returns>
-    public bool TagHit(List<string> checkTags)
+    public bool TagHit(int checkMask)
     {
-        foreach (string t in tags)
-        {
-            if (checkTags.Contains(t)) return true;
-        }
-
-        return false;
+        return (checkMask & TagMask) != 0;
     }
 }

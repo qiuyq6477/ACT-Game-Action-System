@@ -45,18 +45,22 @@ public class ActionController : MonoBehaviour
     private float _wasPercentage = 0;
 
     /// <summary>
-    /// 当前动作的RootMotion方法
-    /// 参数float：当前动作进行到的百分比
-    /// 参数string[]：配置在ActionInfo表里actionInfo.rootMotionTween的param部分
-    /// 返回值：Vector3，偏移量，假设起始的时候坐标为zero，到normalized==参数float的时候，当时的偏移值
+    /// 当前动作的RootMotion求值器：输入动作进行到的百分比，输出从动作起点累计到该百分比的偏移量。
+    /// null代表这个动作没有RootMotion位移。
+    /// 换动作的时候查一次表存下来，免得每帧拿方法名去字典里翻两遍
     /// </summary>
-    private ScriptMethodInfo _rootMotion = new ScriptMethodInfo();
+    private Func<float, RootMotionParam, Vector3> _rootMotionEval = null;
 
     /// <summary>
-    /// 当前激活的攻击盒tag
+    /// 当前动作的RootMotion数值，在GameData.Load里就烘焙好了，这里只是把结构体拷一份
+    /// </summary>
+    private RootMotionParam _rootMotionParam = new RootMotionParam();
+
+    /// <summary>
+    /// 当前激活的攻击盒tag，合成一个位掩码（每个tag占 BoxTagRegistry 里的一位）
     /// 这算是一个内存换芯片，就是我先每帧算好了储存下来哪些框开启
     /// </summary>
-    public List<string> ActiveAttackBoxTag { get; private set; } = new List<string>();
+    public int ActiveAttackBoxMask { get; private set; }
     //同上，只是储存的是具体信息
     public List<AttackBoxTurnOnInfo> ActiveAttackBoxInfo { get; private set; } = new List<AttackBoxTurnOnInfo>();
 
@@ -66,9 +70,9 @@ public class ActionController : MonoBehaviour
     public float MoveInputAcceptance { get; private set; } = 0;
     
     /// <summary>
-    /// 当前激活的受击盒tag
+    /// 当前激活的受击盒tag，合成一个位掩码（每个tag占 BoxTagRegistry 里的一位）
     /// </summary>
-    public List<string> ActiveBeHitBoxTag { get; private set; } = new List<string>();
+    public int ActiveBeHitBoxMask { get; private set; }
     public List<BeHitBoxTurnOnInfo> ActiveBeHitBoxInfo { get; private set; } = new List<BeHitBoxTurnOnInfo>();
     
     /// <summary>
@@ -118,6 +122,7 @@ public class ActionController : MonoBehaviour
         float delta = Time.deltaTime;
         //没有动画就不会工作
         if (AllActions.Count <= 0) return;
+        long gcProbe = GcProbe.Begin(GcProbe.Region.ActionControllerUpdate);
         
         //根据硬直来调整倍率
         anim.speed = Freezing ? 0 : 1;
@@ -136,10 +141,10 @@ public class ActionController : MonoBehaviour
         CalculateInputAcceptance(_wasPercentage, _pec);
         
         //算一下2帧之间的RootMotion变化
-        if (!String.IsNullOrEmpty(_rootMotion.method) && RootMotionMethod.Methods.ContainsKey(_rootMotion.method))
+        if (_rootMotionEval != null)
         {
-            Vector3 rmThisTick = RootMotionMethod.Methods[_rootMotion.method](_pec, _rootMotion.param);
-            Vector3 rmLastTick = RootMotionMethod.Methods[_rootMotion.method](_wasPercentage, _rootMotion.param);
+            Vector3 rmThisTick = _rootMotionEval(_pec, _rootMotionParam);
+            Vector3 rmLastTick = _rootMotionEval(_wasPercentage, _rootMotionParam);
             RootMotionMove = rmThisTick - rmLastTick;
             //Debug.Log("RootMotion distance " + RootMotionMove + "=>" + pec + " - " + _wasPercentage);
         }else RootMotionMove = Vector3.zero;
@@ -187,6 +192,7 @@ public class ActionController : MonoBehaviour
         
         //清理一下预约列表
         _preorderActions.Clear();
+        GcProbe.End(GcProbe.Region.ActionControllerUpdate, gcProbe);
     }
 
     /// <summary>
@@ -217,8 +223,9 @@ public class ActionController : MonoBehaviour
     /// <param name="pec">百分比进度</param>
     private void CalculateBoxInfo(float wasPec, float pec)
     {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.CalculateBoxInfo);
         ActiveAttackBoxInfo.Clear();
-        ActiveAttackBoxTag.Clear();
+        ActiveAttackBoxMask = 0;
         foreach (AttackBoxTurnOnInfo aBox in CurrentAction.attackPhase)
         {
             bool open = false;
@@ -233,15 +240,13 @@ public class ActionController : MonoBehaviour
 
             if (open)
             {
-                foreach (string aTag in aBox.tag)
-                    if (!ActiveAttackBoxTag.Contains(aTag))
-                        ActiveAttackBoxTag.Add(aTag);
+                ActiveAttackBoxMask |= aBox.tagMask;
                 ActiveAttackBoxInfo.Add(aBox);
             }
         }
         
         ActiveBeHitBoxInfo.Clear();
-        ActiveBeHitBoxTag.Clear();
+        ActiveBeHitBoxMask = 0;
         foreach (BeHitBoxTurnOnInfo bHitBox in CurrentAction.defensePhase)
         {
             bool open = false;
@@ -256,12 +261,11 @@ public class ActionController : MonoBehaviour
 
             if (open)
             {
-                foreach (string bTag in bHitBox.tag)
-                    if (!ActiveBeHitBoxTag.Contains(bTag))
-                        ActiveBeHitBoxTag.Add(bTag);
+                ActiveBeHitBoxMask |= bHitBox.tagMask;
                 ActiveBeHitBoxInfo.Add(bHitBox);
             }
         }
+        GcProbe.End(GcProbe.Region.CalculateBoxInfo, gcProbe);
     }
 
     /// <summary>
@@ -345,11 +349,19 @@ public class ActionController : MonoBehaviour
             _freezing = freezingAfterChange;
             
             ActiveBeHitBoxInfo.Clear();
-            ActiveBeHitBoxTag.Clear();
-            ActiveAttackBoxTag.Clear();
+            ActiveBeHitBoxMask = 0;
+            ActiveAttackBoxMask = 0;
             ActiveAttackBoxInfo.Clear();
             
-            _rootMotion = aInfo.rootMotionTween;
+            //RootMotion：换动作的时候查一次表，数值是在GameData.Load里烘焙好的，这里只拷结构体
+            _rootMotionEval = null;
+            string rootMotionMethod = aInfo.rootMotionTween.method;
+            if (!string.IsNullOrEmpty(rootMotionMethod) &&
+                RootMotionMethod.Methods.TryGetValue(rootMotionMethod, out RootMotionFunc rootMotionFunc))
+            {
+                _rootMotionEval = rootMotionFunc.Eval;
+                _rootMotionParam = aInfo.rootMotionParam;
+            }
             
             _wasPercentage = fromNormalized;
             //顺便修一下面向
@@ -432,11 +444,9 @@ public class ActionController : MonoBehaviour
                 //既然保持，就啥也不做了
                 break;
             case ActionChangeType.ChangeByCatalog:
-                List<ActionInfo> actions = new List<ActionInfo>();
-                foreach (ActionInfo info in AllActions)
-                    if (info.catalog == acInfo.param)
-                        actions.Add(info);
-                if (actions.Count > 0)
+                long gcProbe = GcProbe.Begin(GcProbe.Region.ChangeByCatalog);
+                ActionInfo[] actions = GameData.ActionsOfCatalog(acInfo.param);
+                if (actions.Length > 0)
                 {
                     ActionInfo picked = actions[0];
                     //如果有策划设计的脚本，那就走脚本拿到数据
@@ -453,6 +463,7 @@ public class ActionController : MonoBehaviour
                         FreezingAfterChangeAction = freezing
                     });
                 }
+                GcProbe.End(GcProbe.Region.ChangeByCatalog, gcProbe);
                 break;
             case ActionChangeType.ChangeToActionId:
                 //找到对应id的动作，如果有的话

@@ -55,6 +55,7 @@ public class InputToCommand : MonoBehaviour
     /// </summary>
     private void Update()
     {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.InputUpdate);
         float dt = Time.deltaTime;
         //开始去掉已经过期的操作记录
         int index = 0;
@@ -97,26 +98,26 @@ public class InputToCommand : MonoBehaviour
             bool yHasInput = Mathf.Abs(yInput) >= deadArea;
             bool noDir = !xHasInput && !yHasInput;
         
-            //上下左右4个方向
-            bool[] dirDown = new[] {false, false, false, false};
+            //上下左右4个方向，每帧都走这里，所以不能是数组（原来的 new[] 就是每帧一次分配）
+            bool up = false, duck = false, back = false, forward = false;
             if (xHasInput)
-                if (xInput > 0) dirDown[3] = true;
-                else dirDown[2] = true;
+                if (xInput > 0) forward = true;
+                else back = true;
 
             if (yHasInput)
-                if (yInput > 0) dirDown[0] = true;
-                else dirDown[1] = true;
+                if (yInput > 0) up = true;
+                else duck = true;
 
             //这里不能else，因为可能同一帧有8个方向的输入的，但是unity和ue的input都自作聪明的屏蔽了……
             //尽管他们有问题，但我们不能有问题
-            if (dirDown[0]) AddInput(KeyMap.Up);
-            if (dirDown[1]) AddInput(KeyMap.Duck);
-            if (dirDown[2]) AddInput(KeyMap.Backward);
-            if (dirDown[3]) AddInput(KeyMap.Forward);
-            if (dirDown[0] && dirDown[2]) AddInput(KeyMap.UpBackward);
-            if (dirDown[1] && dirDown[2]) AddInput(KeyMap.DuckBackward);
-            if (dirDown[0] && dirDown[3]) AddInput(KeyMap.UpForward);
-            if (dirDown[1] && dirDown[3]) AddInput(KeyMap.DuckForward);
+            if (up) AddInput(KeyMap.Up);
+            if (duck) AddInput(KeyMap.Duck);
+            if (back) AddInput(KeyMap.Backward);
+            if (forward) AddInput(KeyMap.Forward);
+            if (up && back) AddInput(KeyMap.UpBackward);
+            if (duck && back) AddInput(KeyMap.DuckBackward);
+            if (up && forward) AddInput(KeyMap.UpForward);
+            if (duck && forward) AddInput(KeyMap.DuckForward);
         
             //最后看是否要加入没有操作的操作
             if (noDir)
@@ -125,6 +126,7 @@ public class InputToCommand : MonoBehaviour
         
         //计数器
         _timeStamp += Time.deltaTime;
+        GcProbe.End(GcProbe.Region.InputUpdate, gcProbe);
     }
 
     private void AddInput(KeyMap key)
@@ -183,6 +185,30 @@ public class InputToCommand : MonoBehaviour
         }
 
         return true;    //肯定找到了才会到这里
+    }
+
+    /// <summary>
+    /// 某个键在当前这一帧是否处于按住状态
+    /// 给"移动意图"这类单键判定用的极速路径：ActionOccur 要为多键搓招保序，
+    /// 每次都得带着数组走一遍子序列匹配，而按住判定只需要看这一帧有没有该键的记录
+    /// </summary>
+    /// <param name="key">要看的键（已经是大脑里的方向，不受正反手影响）</param>
+    /// <returns></returns>
+    public bool IsKeyHeld(KeyMap key)
+    {
+        double lastStamp = _timeStamp - Time.deltaTime; //和ActionOccur一样，最短只看上一帧
+        //输入记录是按时间戳追加的，所以倒着找，一旦早于窗口就可以直接收工
+        for (int i = _input.Count - 1; i >= 0; i--)
+        {
+            if (_input[i].TimeStamp < lastStamp) break;
+            if (GetKeyInput(_input[i].Key) == key) return true;
+        }
+
+        //和ActionOccur对最后一个键的处理保持一致：本帧刚按下、还没来得及进历史记录的也算
+        for (int i = 0; i < _newInputs.Count; i++)
+            if (GetKeyInput(_newInputs[i].Key) == key) return true;
+
+        return false;
     }
 
     /// <summary>

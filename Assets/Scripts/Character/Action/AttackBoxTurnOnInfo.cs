@@ -18,6 +18,12 @@ public struct AttackBoxTurnOnInfo
     public string[] tag;
 
     /// <summary>
+    /// 上面那组tag在 GameData.Load 里烘焙成的位掩码，运行期只用它做交集判断。
+    /// 【不是填表数据】：JsonUtility 会跳过 [NonSerialized]，表里不用填
+    /// </summary>
+    [NonSerialized] public int tagMask;
+
+    /// <summary>
     /// 这段攻击的逻辑数据是ActionInfo中的哪个AttackInfo
     /// </summary>
     public int attackPhase;

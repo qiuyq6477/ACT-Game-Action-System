@@ -6,13 +6,14 @@ using UnityEngine;
 /// <summary>
 /// 根据Catalog选择技能的函数
 /// key是Catalog
-/// value是(List of ActionInfo, ForceDirection)=>ActionInfo
+/// value是(ActionInfo[] of candidates, ForceDirection)=>ActionInfo
 /// 执行value获得一个结果
+/// 候选数组由 GameData.ActionsOfCatalog 的倒排索引给出，是只读的静态数据，别去改它的长度或元素
 /// </summary>
 public static class PickActionMethod
 {
-    public static Dictionary<string, Func<List<ActionInfo>, ForceDirection, ActionInfo>> Methods =
-        new Dictionary<string, Func<List<ActionInfo>, ForceDirection, ActionInfo>>()
+    public static Dictionary<string, Func<ActionInfo[], ForceDirection, ActionInfo>> Methods =
+        new Dictionary<string, Func<ActionInfo[], ForceDirection, ActionInfo>>()
         {
             //受伤
             {

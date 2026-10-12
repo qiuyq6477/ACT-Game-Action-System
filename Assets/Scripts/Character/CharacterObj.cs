@@ -80,22 +80,26 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     public float moveSpeed;
 
-    private bool WishToMoveForward =>
-        input.ActionOccur(new ActionCommand {keySequence = new KeyMap[] {KeyMap.Forward}});
+    private bool WishToMoveForward => input.IsKeyHeld(KeyMap.Forward);
 
-    private bool WishToMoveBackward =>
-        input.ActionOccur(new ActionCommand {keySequence = new KeyMap[] {KeyMap.Backward}});
+    private bool WishToMoveBackward => input.IsKeyHeld(KeyMap.Backward);
 
     /// <summary>
     /// 自然的移动，而非ForceMoved
     /// </summary>
-    public Vector3 NatureMove(float delta) => new Vector3(
-        ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * delta) :
-            WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * delta) : 0) + action.RootMotionMove.x) *
-        (Inversed ? -1 : 1),
-        action.RootMotionMove.y - _curWeight,   //unity的坐标系y是反过来的
-        action.RootMotionMove.z
-    );
+    public Vector3 NatureMove(float delta)
+    {
+        long gcProbe = GcProbe.Begin(GcProbe.Region.NatureMove);
+        Vector3 moved = new Vector3(
+            ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * delta) :
+                WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * delta) : 0) + action.RootMotionMove.x) *
+            (Inversed ? -1 : 1),
+            action.RootMotionMove.y - _curWeight,   //unity的坐标系y是反过来的
+            action.RootMotionMove.z
+        );
+        GcProbe.End(GcProbe.Region.NatureMove, gcProbe);
+        return moved;
+    }
 
     
     
@@ -113,9 +117,18 @@ public class CharacterObj : MonoBehaviour
         foreach (Transform trans in transforms)
         {
             AttackHitBox ahb = trans.GetComponent<AttackHitBox>();
-            if (ahb) ahb.master = this;
+            if (ahb)
+            {
+                ahb.master = this;
+                //顺便把Inspector上的tag换成位掩码，Awake一定早于所有Update，判定不会踩到没烘焙的盒子
+                ahb.BakeTagMask();
+            }
             BeHitBox bhb = trans.GetComponent<BeHitBox>();
-            if (bhb) bhb.master = this;
+            if (bhb)
+            {
+                bhb.master = this;
+                bhb.BakeTagMask();
+            }
         }
     }
 
@@ -135,55 +148,38 @@ public class CharacterObj : MonoBehaviour
     /// <summary>
     /// 攻击盒子当前是否激活？
     /// </summary>
-    /// <param name="tags">攻击盒的tag</param>
+    /// <param name="boxMask">攻击盒自己的TagMask</param>
     /// <returns></returns>
-    public bool ShouldAttackBoxActive(string[] tags)
+    public bool ShouldAttackBoxActive(int boxMask)
     {
-        foreach (string s in tags)
-            if (action.ActiveAttackBoxTag.Contains(s))
-                return true;
-        return false;
+        //没有tag的盒子掩码是0，跟谁相与都是0，也就永远不开启，和原来空数组的行为一致
+        return (boxMask & action.ActiveAttackBoxMask) != 0;
     }
 
     /// <summary>
     /// 挨打盒子当前是否激活？
     /// </summary>
-    /// <param name="tags">受击盒的tag</param>
+    /// <param name="boxMask">受击盒的tag掩码</param>
     /// <returns></returns>
-    public bool ShouldBeHitBoxActive(string[] tags)
+    public bool ShouldBeHitBoxActive(int boxMask)
     {
-        foreach (string s in tags)
-            if (action.ActiveBeHitBoxTag.Contains(s))
-                return true;
-        return false;
+        return (boxMask & action.ActiveBeHitBoxMask) != 0;
     }
 
     /// <summary>
     /// 攻击盒当前的临时优先级：开启它的攻击阶段里优先级最高的那个
     /// 取最高而不是求和，因为两个阶段同时开启同一个盒子本身就是配表事故，求和只会把错误放大
     /// </summary>
-    /// <param name="tags">攻击盒的tag</param>
+    /// <param name="boxMask">攻击盒的tag掩码</param>
     /// <returns></returns>
-    public int GetAttackBoxTempPriority(string[] tags)
+    public int GetAttackBoxTempPriority(int boxMask)
     {
         int res = 0;
         bool found = false;
         foreach (AttackBoxTurnOnInfo info in action.ActiveAttackBoxInfo)
         {
-            bool opened = false;
-            foreach (string infoTag in info.tag)
-            {
-                foreach (string s in tags)
-                    if (infoTag == s)
-                    {
-                        opened = true;
-                        break;
-                    }
-
-                if (opened) break;
-            }
-
-            if (!opened) continue;
+            //这个开启的阶段跟盒子没有共同tag，就与它无关
+            if ((info.tagMask & boxMask) == 0) continue;
             if (!found || info.priority > res)
             {
                 res = info.priority;
@@ -223,16 +219,13 @@ public class CharacterObj : MonoBehaviour
 
     private BeHitBoxTurnOnInfo GetDefensePhaseByBeHitBox(BeHitBox box)
     {
-        foreach (string boxTag in box.tags)
+        //按defensePhase的表顺序取第一个跟这个盒子有共同tag的阶段。
+        //原来是拿盒子的tag当外层去比，只有当一个盒子带多个tag、而这些tag又被不同阶段开启时
+        //两者才会挑到不同的阶段，而那种配表本来就被声明为"听天由命"（见ActionInfo的defensePhase注释）
+        foreach (BeHitBoxTurnOnInfo info in action.ActiveBeHitBoxInfo)
         {
-            foreach (BeHitBoxTurnOnInfo info in action.ActiveBeHitBoxInfo)
-            {
-                foreach (string infoTag in info.tag)
-                {
-                    if (infoTag == boxTag)
-                        return info;
-                }
-            }
+            if ((info.tagMask & box.TagMask) != 0)
+                return info;
         }
         return new BeHitBoxTurnOnInfo();
     }
@@ -254,16 +247,10 @@ public class CharacterObj : MonoBehaviour
         
         defensePhase = new BeHitBoxTurnOnInfo();
         if (!target) return false;
+        long gcProbe = GcProbe.Begin(GcProbe.Region.CanAttackTargetNow);
         
-        //目标开启的受击盒
-        List<string> activeBoxTag = new List<string>();
-        foreach (BeHitBoxTurnOnInfo info in target.action.ActiveBeHitBoxInfo)
-        {
-            foreach (string t in info.tag)
-            {
-                if (!activeBoxTag.Contains(t)) activeBoxTag.Add(t);
-            }
-        }
+        //目标当前开启着哪些受击盒tag：ActionController每帧已经算好了，这里直接取掩码
+        int activeBoxMask = target.action.ActiveBeHitBoxMask;
         
         //命中对方的所有攻击框，冒泡出最有价值的攻击框和受击框
         AttackHitBox bestAttackBox = null;
@@ -286,7 +273,7 @@ public class CharacterObj : MonoBehaviour
                 BeHitBoxTurnOnInfo defense = new BeHitBoxTurnOnInfo();
                 foreach (BeHitBox hitBox in touch.Value)
                 {
-                    if (!hitBox.Active || hitBox.master != target || !hitBox.TagHit(activeBoxTag)) continue;
+                    if (!hitBox.Active || hitBox.master != target || !hitBox.TagHit(activeBoxMask)) continue;
                     BeHitBoxTurnOnInfo info = GetDefensePhaseByBeHitBox(hitBox);
                     int thisPriority = hitBox.Priority + info.priority;
                     if (!best || thisPriority > defenseScore)
@@ -314,13 +301,18 @@ public class CharacterObj : MonoBehaviour
             }
         }
 
-        if (!bestAttackBox) return false;
+        if (!bestAttackBox)
+        {
+            GcProbe.End(GcProbe.Region.CanAttackTargetNow, gcProbe);
+            return false;
+        }
         
         attackBox = bestAttackBox;
         targetBox = bestTargetBox;
         defensePhase = bestDefense;
         if (bestBoxInfo.attackPhase >= 0 && bestBoxInfo.attackPhase < action.CurrentAction.attacks.Length)
             attackPhase = action.CurrentAction.attacks[bestBoxInfo.attackPhase];
+        GcProbe.End(GcProbe.Region.CanAttackTargetNow, gcProbe);
         return true;
     }
     

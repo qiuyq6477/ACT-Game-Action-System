@@ -53,10 +53,25 @@ public class AttackHitBox : MonoBehaviour
     /// </summary>
     public bool Active { get; private set; }
 
+    /// <summary>
+    /// tags烘焙出来的位掩码，开关和临时优先级都用它判定，不再比对字符串
+    /// </summary>
+    public int TagMask { get; private set; }
+
+    /// <summary>
+    /// 把Inspector上填的tags翻译成位掩码。
+    /// 由CharacterObj.Awake顺带调用（那里本来就要遍历子组件认主人），
+    /// 一定要在任何Update之前完成，否则盒子会以为自己的标签谁都不是
+    /// </summary>
+    public void BakeTagMask()
+    {
+        TagMask = BoxTagRegistry.MaskOf(tags);
+    }
+
     private void Update()
     {
-        Active = master && master.ShouldAttackBoxActive(tags);
-        TempPriority = master ? master.GetAttackBoxTempPriority(tags) : 0;
+        Active = master && master.ShouldAttackBoxActive(TagMask);
+        TempPriority = master ? master.GetAttackBoxTempPriority(TagMask) : 0;
     }
 
     private void OnTriggerEnter(Collider other)

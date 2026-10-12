@@ -19,6 +19,12 @@ public struct BeHitBoxTurnOnInfo
     public string[] tag;
 
     /// <summary>
+    /// 上面那组tag在 GameData.Load 里烘焙成的位掩码，运行期只用它做交集判断。
+    /// 【不是填表数据】：JsonUtility 会跳过 [NonSerialized]，表里不用填
+    /// </summary>
+    [NonSerialized] public int tagMask;
+
+    /// <summary>
     /// 这样开启的盒子，优先级会发生怎样的临时变化
     /// </summary>
     public int priority;
