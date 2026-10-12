@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十三件事：
+/// 钉的十四件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -53,6 +53,10 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 13. 帧事件的接收者（BeatEmUp 移植切片 2.1）：表里每一条 cue 要的名字都真能拿到素材、
 ///    烟放在放它的人脚下并在换算出来的拍数上收回、超过容量只回头复用而绝不 Instantiate、
 ///    镜头震动十八拍退干净、名字对不上时安静跳过而不是抛或刷 Error。
+/// 14. 敌兵的决策（BeatEmUp 移植切片 2.2）：够不着就按前进、目标在身后先转身再前进、车道没对上时
+///    只按纵深键、决定出手之后隔满 `telegraphFrames` 拍才把键按下去、场上攻击中的人达到配额就不许再上、
+///    玩家死了整族停摆、他自己挨着打的那几拍既不思考也不走位。
+///    【AI 只登记按键，不写位移】：出不出招仍然由表说了算，所以这一区断言的是"按了什么"。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -62,6 +66,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 第15区整条抛物线都要跑，所以它既跑移动拍，也自己摆一块 Ground 层的面板当地面——
 /// EditMode 没有场景，不造地面角色就一路往下掉；
 /// 第16区跑满整条链（移动、同轨推挤、抓取约束三拍都在内），因为"被举者这一拍站在哪"就是最后那一拍写的；
+/// 第19区只跑到动作拍为止（它断言的是"AI 按了什么键、第几拍按的"，位移归表管）；
 /// 第17区也跑满整条链，而且它打的是真结算入口（CombatPipeline.ResolveHit）——"挡住之后动作一动不动"
 /// 这件事只有把整条链跑起来才看得见。
 /// </summary>
@@ -2471,5 +2476,173 @@ public class ActionFrameClockTests
 
         Assert.AreEqual(0, r.ActiveEffectCount("NoSuchPuff"), "没有池就什么都不放，而不是放一个空的");
         Assert.IsFalse(r.HasClip("NoSuchSfx"));
+    }
+
+    //================================ 第19区：敌兵的决策（切片 2.2） ====================================
+    //AI 只干一件事：往同一个 `_input` 里登记按键。所以这一区断言的全是"他按了什么、什么时候按"，
+    //而"按下之后出不出招"仍然是表说了算——那部分是第7到第10区的事，这里不重复钉。
+    //角色也照生产那样只拿自己那一份子集（`GiveActionsTo`），不然全表在场时 [Forward] 会派生出别家的行
+
+    private EnemyMind MakeMind(CharacterObj who, CharacterObj whom)
+    {
+        //敌兵用他自己那一家：站立 / 前进 / 后退 / 拳 / 脚 / 转身，跟 demo 场景里的那两只灰盒一致
+        string[] subset = who.actionSubset;
+        who.action.SetAllActions(GameData.ActionsFor(subset), "BoxingStand");
+        EnemyMind m = who.gameObject.AddComponent<EnemyMind>();
+        m.self = who;
+        m.target = whom;
+        m.delayBeforeStartFrames = 0;
+        //概率这一档在这里定成 100%，因为要测的是"决定出手之后隔几拍按下去"；
+        //概率本身由下面配额那两条用例钉
+        m.attackChanceWhenIdle = 100;
+        m.attackChanceWhenSomeBusy = 100;
+        return m;
+    }
+
+    /// <summary>
+    /// 一拍：玩家输入拍 → AI 拍 → 两个角色的动作拍。移动拍不跑，这一区断言的是按键与派生。
+    /// `busy` 就是 GameMain 那一拍算出来再传进来的"已经有几只扑上去了"，
+    /// 配额是调用方数的（`EnemyMind` 的类注释里写了为什么），所以用例可以直接给它一个数
+    /// </summary>
+    private void TickMind(EnemyMind m, int busy, params KeyMap[] playerKeys)
+    {
+        LogicClock.Advance();
+        _input.Tick();
+        m.self.input.Tick();
+        for (int i = 0; i < playerKeys.Length; i++) _input.AddInput(playerKeys[i]);
+        m.Tick(busy);
+        _action.Tick();
+        m.self.action.Tick();
+    }
+
+    [Test]
+    public void MindClosesTheGapByPressingForward()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.self.transform.position = new Vector3(0f, 0f, 0f);
+        _character.transform.position = new Vector3(3f, 0f, 0f);
+
+        TickMind(m, 0);
+
+        Assert.IsFalse(m.self.Inversed, "目标在 +x 一侧，面向就不该反着");
+        Assert.AreEqual("BoxingMoveForward", m.self.action.CurrentAction.id, "够不着就往前走，这是表里那条前进行");
+    }
+
+    [Test]
+    public void MindTurnsToFaceATargetBehindItAndStillWalksIn()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.self.transform.position = new Vector3(3f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 0);
+
+        Assert.IsTrue(m.self.Inversed, "目标在 -x 一侧，TurnTo 要把面向翻过去");
+        Assert.AreEqual("BoxingMoveForward", m.self.action.CurrentAction.id,
+            "转完身之后按的仍然是前进：AI 要的是「走向他」，不是「背对着他退」");
+    }
+
+    [Test]
+    public void MindMatchesTheLaneBeforeCommitting()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.self.transform.position = new Vector3(0.8f, 0f, -1.2f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 0);
+
+        Assert.AreEqual("BoxingStand", m.self.action.CurrentAction.id,
+            "纵深没对上之前不横着凑距离——横向已经在射程里，只欠车道");
+        //敌兵在 z=-1.2、玩家在 z=0：玩家在他 +z 那一侧（远离镜头），所以按 Up
+        Assert.IsTrue(m.self.input.IsKeyHeld(KeyMap.Up), "目标在远车道就按 Up（+z = 远离镜头，见 KeyMap.Up 那条注释）");
+    }
+
+    /// <summary>
+    /// 前摇 = 表上那个 `telegraphFrames`。源工程是站到理想位置之后停 .3 秒再出手，
+    /// 这 .3 秒就是"看得见但来得及躲"的那一段，拍数错了手感就整个变
+    /// </summary>
+    [Test]
+    public void TelegraphHoldsTheKeyForTheTableFrames()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.telegraphFrames = 18;
+        //默认那四是两拳两脚随机抽，这里要钉的是"第几拍按下去"而不是"按的是哪一下"，所以钉死成拳
+        m.attackKeys = new[] { KeyMap.Punch };
+        m.self.transform.position = new Vector3(1f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 0);                    //这一拍末尾决策一次，前摇开始
+        Assert.AreEqual(18, m.TelegraphLeft, "决定出手的那一拍，前摇从整段开始记");
+
+        for (int i = 0; i < 17; i++) TickMind(m, 0);
+        Assert.AreEqual("BoxingStand", m.self.action.CurrentAction.id, "前摇没走完就不该出招");
+
+        TickMind(m, 0);
+        Assert.AreEqual("Punch", m.self.action.CurrentAction.catalog, "第 18 拍键按下去，当拍就派生出拳");
+    }
+
+    /// <summary>
+    /// 进攻配额：源工程那三档——没人进攻 75%、1~2 个人在打 25%、3 个以上一律不打。
+    /// 这里把概率拉到 100% 只测"该不该轮到我"这一半
+    /// </summary>
+    [Test]
+    public void QuotaRefusesWhenEnoughAlreadyBusy()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.maxAttackers = 3;
+        m.attackChanceWhenSomeBusy = 100;
+        m.self.transform.position = new Vector3(1f, 0f, 0f);
+        _character.transform.position = new Vector3(0f, 0f, 0f);
+
+        TickMind(m, 3, KeyMap.NoInput);                    //已经有 3 只在打：不许再上
+        Assert.AreEqual(0, m.TelegraphLeft, "场上进攻中的人数到达配额，这一轮不出手");
+        Assert.AreEqual(0, m.LastPercent, "配额满了，概率直接是 0 而不是抽一次");
+
+        m.FramesToDecision = 0;
+        TickMind(m, 2);                                    //撤掉一只，配额重新放行
+        Assert.AreEqual(m.telegraphFrames, m.TelegraphLeft, "没满配额就轮得到他出手，而且走的是 25% 那一档");
+
+        m.FramesToDecision = 0;
+        m.TelegraphLeft = 0;
+        TickMind(m, 0);
+        Assert.AreEqual(m.telegraphFrames, m.TelegraphLeft, "一只都没有就是 75% 那一档，100% 概率下必然出手");
+        
+
+    }
+
+    [Test]
+    public void MindStopsThinkingOnceThePlayerIsDead()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.self.transform.position = new Vector3(0f, 0f, 0f);
+        _character.transform.position = new Vector3(3f, 0f, 0f);
+        _character.Stats.TakeDamage(1000f);
+        Assert.IsTrue(_character.IsDead, "前提：玩家得真的死了");
+
+        for (int i = 0; i < 30; i++) TickMind(m, 0);
+
+        Assert.AreEqual("BoxingStand", m.self.action.CurrentAction.id,
+            "源工程玩家一死就 DisableAllEnemyAI，这里同理：别围着一具尸体挥拳");
+    }
+
+    [Test]
+    public void MindHoldsStillWhileTheEnemyIsStunned()
+    {
+        BuildTarget();
+        EnemyMind m = MakeMind(_target, _character);
+        m.self.action.SetAllActions(GameData.ActionsFor(_target.actionSubset), "HurtFromForward");
+        m.self.transform.position = new Vector3(0f, 0f, 0f);
+        _character.transform.position = new Vector3(3f, 0f, 0f);
+
+        TickMind(m, 0);
+
+        Assert.AreEqual("HurtFromForward", m.self.action.CurrentAction.id,
+            "挨着打的那几拍不思考也不走位：他的动作由受击行自己带回去，AI 不许插手");
     }
 }

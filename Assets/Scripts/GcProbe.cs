@@ -34,6 +34,7 @@ public static class GcProbe
         ChangeAction,
         DamageSettle,
         PoolTick,
+        EnemyThink,
         Count
     }
 

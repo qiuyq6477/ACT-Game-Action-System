@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1 · 2026-10；剩 Step 2 的 AI、波次与关卡）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2 · 2026-10；剩波次与关卡）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -317,6 +317,24 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **验证**：EditMode 56/56 全绿（第18区五条：表里每个名字都有素材、烟摆在这个人脚下并在换算出来的拍数上收回、响 7 次只亮 6 团且第 0 槽被复用、震屏 18 拍归位、名字对不上时安静跳过）。批处理 Play 探针（70000 渲染帧 / 861 逻辑帧）**十五个分区全部 `avg=0 max=0`**，含新增的 `PoolTick n=358` 与 `CueFire n=1074`，自检 1056B；`no receiver` 0 条、`negative scale` 0 条、`[帧事件]` 缺素材警告 0 条。
 
 **偏离与顺延**：`CueKind.Projectile` 跟着弹射物那一片做；`CueKind.Force` 表里三处 `param` 全空（源工程 `AddForce` 也不带参数），要它得先把"cue 带一个 `MoveInfo`"这件事定了，不为一行代码造一个半套。受击白闪与伤害飘字仍归 Step 2 后面的片（它们与命中结算同源，不是 cue）。
+
+### 切片 2.2 敌兵的决策（决策心跳 + 进攻配额） · 已实施 · 2026-10
+
+解决的问题：场上的敌兵不会动。源工程用一整套状态类（`EnemyIdle` / `EnemyMoveToTargetAndAttack` / `EnemyAttack` / `EnemyKeepDistance` / `EnemyMoveTo`）在 `Update` 里按墙钟跑，每个状态自己写"怎么走、走多久"。
+
+- **没有状态机，只有按键**：`Character/EnemyMind.cs` 每逻辑帧做的事就是往同一个 `InputToCommand.AddInput` 里登记按键——切片 1.6 当初就为 AI/回放留了这个口子。位移真源仍然在表里（`NatureMove` 读 `IsKeyHeld`，速率是 `moveSpeed`），所以"给敌兵换招式"以后是填表而不是改 AI，而"AI 会不会动"与"这招出不出得来"是两件事、分开可测。
+- **节拍换成整型帧**：源工程 `decisionInterval 1s + Random.Range(0, randomizeAmount 1s)` 且直接写 `lastDecisionTime = Time.time + rand`（墙钟、不可复现）。这里改成 `decisionIntervalFrames + Dice.Next(jitter)`，默认 60 + [0,60] 拍。愣神 `delayBeforeStart 1s`→60 拍、前摇 `enemyPauseBeforeAttack .3s`→18 拍、够得着 `maxAttackRange (1.2, .1)` 米、理想站位 1 米，全部是组件上的可调字段，默认值照 `Enemy.prefab`。
+- **配额从"AI 自己数场上有谁"改成"调用方数好传进来"**：第一版是 `CharacterObj.Units` 里数 catalog 为 Punch/Kick/Nudge 的人，跑闸门立刻错——那会把**玩家自己**那一拳也算成一个名额（他也在打），而且编辑器用例里 `Units` 有跨用例的残留。现在 `GameMain` 的 AI 拍先对自己的 `_minds` 数组数一遍"几只已经扑上去了"，再把同一个数发给每一只：一遍循环代替 N×M 次互查，所有人看到的还是同一个瞬间。三档概率照源工程：0 只 75% / 未满 3 只 25% / 满配额 0%。
+- **登记的键是世界方向**（`Forward` = 世界 +x）：`GetKeyInput` 会在比对表里的命令时按 `inversed` 镜像一次，AI 若直接存"我脸朝的那一边"，转过去身之后就成了"背对着人退开"。这条是闸门抓出来的（`MindTurnsToFaceATargetBehindItAndStillWalksIn` 期望前进、实际派生出后退行）。
+- **新增框架功能 `ActionController.TurnTo(bool)`**：只设 `CharacterObj.Inversed` 的话，视觉上的翻法（3D 转 Y / 精灵翻 x）要等下一次换动作才落地，于是"站着转身"转不过去；而 demo 那张表里 `[Backward]` 同时是 `BoxingMoveBackward` 与带 `flip` 的 `TurnBack` 的命令，同分赢的是表里靠前的后退行——"按后退来转身"根本不成立。所以面向交给框架的那一个真源，改完立刻 `_facing.Apply` 一次。
+- **TickAll 多出「AI 决策」拍**（新分区 `GcProbe.Region.EnemyThink`），排在输入拍之后、动作拍之前：与玩家按键同一个时机，不给 AI 单独多一拍迟钝。`GameMain.enemiesFightBack` 是开关（默认开，关掉退回 demo 那种站桩靶子）；决策器是代码里 `AddComponent` 挂的，不动 `.unity`。
+- 玩家死亡整族停摆（源工程 `DisableAllEnemyAI`）、敌兵自己处在 Hurt/Beaten 这些分类时既不思考也不走位。
+
+**验证**：EditMode 63/63 全绿（第19区七条：够不着就按前进、目标在身后先转身再前进、车道没对上时只按纵深键、前摇隔满 18 拍才把键按下去、配额满了不出手且概率直接是 0、玩家死了 30 拍一动不动、挨着打的那几拍 AI 不插手）。批处理 Play 探针跑真实场景：敌兵从 10.00 起步，玩家走到 10.74 / z=-1.21 之后他跟到 11.64 / z=-1.21——**横向保持 0.90 米（表里理想站位 1 米）、车道逐拍对齐**，也就是说走位、转身、跟横、跟纵深在真场景里都成立；`negative scale` 0 条。分区报告稳态那一条是**十六个分区全部 `avg=0 max=0`**（含新分区 `EnemyThink`），自检 1056B 对照非零；早期窗口里 `EnemyThink max=2592` 是敌兵那两条输入列表从头扩容的头部增长，正是因此把 `InputToCommand` / `ActionController` 里每拍会 `Add` 的常驻列表都改成按满员预置（`RecordKeepFrames + 8`、8、8、4、4）。
+
+**顺带**：`EnemyMind.Tick` 只登记按键这件事，让"AI 之后不动"与"表没填对"两种情况第一次能被分开查；而这一片也顺带暴露了常驻列表没预置的问题（上面那段）。
+
+**偏离与顺延**：源工程的 `EnemyKeepDistance`（打不着就横向拉到 2/4 米再抖纵深）没做——它的功能是"别挤在一块"，而本工程已经有同轨推挤那一拍。`defendChance`（敌兵概率格挡）留在字段外面没做，等敌兵自己的招式表（现在敌兵用的还是 demo 那一家）。`hitOtherEnemiesWhenThrown` 仍按 1.8 登记顺延。
 
 ### 顺带：恢复闸门
 

@@ -27,7 +27,7 @@ public class ActionController : MonoBehaviour
     /// <summary>
     /// 当前激活的BeCancelledTag
     /// </summary>
-    public List<BeCancelledTag> CurrentBeCancelledTag { get; private set; } = new List<BeCancelledTag>();
+    public List<BeCancelledTag> CurrentBeCancelledTag { get; private set; } = new List<BeCancelledTag>(4);
 
     /// <summary>
     /// 角色所有会的动作
@@ -44,7 +44,7 @@ public class ActionController : MonoBehaviour
     /// <summary>
     /// 当前帧的动画切换请求，如果一个也没有，则会继续当前的动作
     /// </summary>
-    private List<PreorderActionInfo> _preorderActions = new List<PreorderActionInfo>();
+    private List<PreorderActionInfo> _preorderActions = new List<PreorderActionInfo>(8);
 
     /// <summary>
     /// 当前动作走到第几个逻辑帧（0起，动作自己的时钟）
@@ -85,7 +85,7 @@ public class ActionController : MonoBehaviour
     /// </summary>
     public int ActiveAttackBoxMask { get; private set; }
     //同上，只是储存的是具体信息
-    public List<AttackBoxTurnOnInfo> ActiveAttackBoxInfo { get; private set; } = new List<AttackBoxTurnOnInfo>();
+    public List<AttackBoxTurnOnInfo> ActiveAttackBoxInfo { get; private set; } = new List<AttackBoxTurnOnInfo>(8);
 
     /// <summary>
     /// 当前帧的移动速度百分比
@@ -96,7 +96,7 @@ public class ActionController : MonoBehaviour
     /// 当前激活的受击盒tag，合成一个位掩码（每个tag占 BoxTagRegistry 里的一位）
     /// </summary>
     public int ActiveBeHitBoxMask { get; private set; }
-    public List<BeHitBoxTurnOnInfo> ActiveBeHitBoxInfo { get; private set; } = new List<BeHitBoxTurnOnInfo>();
+    public List<BeHitBoxTurnOnInfo> ActiveBeHitBoxInfo { get; private set; } = new List<BeHitBoxTurnOnInfo>(4);
     
     /// <summary>
     /// 当前帧的RootMotion信息
@@ -430,6 +430,19 @@ public class ActionController : MonoBehaviour
     /// <param name="transitionNormalized">融合长度（占目标动作时长的比例，CrossFade的实参量纲）</param>
     /// <param name="startFrame">从目标动作的第几个逻辑帧开始播放</param>
     /// <param name="freezingAfterChange">切换动作后，硬直多少逻辑帧</param>
+    /// <summary>
+    /// 逻辑层直接要求的转向（AI 要面对玩家，以后的双人换位也走这里），当场把面向落地一次。
+    /// 【为什么光设 `CharacterObj.Inversed` 不够】：那个 setter 只改真源，而真源的视觉落地
+    /// （3D 绕 Y 转、精灵翻 localScale.x）是**换动作那一拍**才做的（上面那句 `_facing.Apply`），
+    /// 于是站着不动时改了面向，模型还是背着身——AI 就会"面对着玩家却用背靠着他打"
+    /// </summary>
+    public void TurnTo(bool inversed)
+    {
+        if (command == null || command.inversed == inversed) return;
+        command.inversed = inversed;
+        if (_facing) _facing.Apply(inversed);
+    }
+
     private void ChangeAction(string actionId, float transitionNormalized, int startFrame, int freezingAfterChange)
     {
         //这一整段单独设一个探针分区：换动作是"打中人那一拍"最贵的一步，而它的分配大头在

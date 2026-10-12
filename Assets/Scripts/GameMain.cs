@@ -22,6 +22,12 @@ public class GameMain : MonoBehaviour
     public Text inputText;
 
     /// <summary>
+    /// 敌兵会不会自己动。true 是移植的目标（清版动作当然要打），关掉就退回 demo 那种"站桩靶子"，
+    /// 于是同一份表既能演"AI 出不出招"也能演"这记打击手感对不对"
+    /// </summary>
+    public bool enemiesFightBack = true;
+
+    /// <summary>
     /// 限定渲染帧率，验收Phase 2用的：填30/60/120各跑一次，逻辑行为必须完全一致，0表示不限制。
     /// 必须是真正的限帧——编辑器的Playback Rate只改Time.timeScale，那会连逻辑时钟一起放慢，测不出东西
     /// </summary>
@@ -67,6 +73,12 @@ public class GameMain : MonoBehaviour
     /// </summary>
     private CueReceiver _cueReceiver;
 
+    /// <summary>
+    /// 场上敌兵的决策器。代码里挂（跟接收者同一个理由：不动 .unity 也能跑起来），
+    /// 次序按 `enemy` 列表，所以每一只拿到的随机与配额都只取决于列表次序，不取决于 Awake 次序
+    /// </summary>
+    private EnemyMind[] _minds;
+
     void Awake()
     {
         //随机源必须在第一个逻辑帧之前定好种子，否则头几次抽样用的还是静态初始值
@@ -90,6 +102,18 @@ public class GameMain : MonoBehaviour
         GiveActionsTo(player, "BoxingStand");
         foreach (CharacterObj e in enemy)
             GiveActionsTo(e, "TurnBack");
+
+        if (enemiesFightBack)
+        {
+            _minds = new EnemyMind[enemy.Count];
+            for (int i = 0; i < enemy.Count; i++)
+            {
+                EnemyMind mind = enemy[i].gameObject.AddComponent<EnemyMind>();
+                mind.self = enemy[i];
+                mind.target = player;
+                _minds[i] = mind;
+            }
+        }
 
         _all = new CharacterObj[enemy.Count + 1];
         _all[0] = player;
@@ -133,6 +157,24 @@ public class GameMain : MonoBehaviour
     {
         foreach (CharacterObj c in _all)
             c.input.Tick();
+
+        //AI 拍：决策器往 `_input` 里登记按键，登记的时机与玩家那一拍同一次序、同一个口子，
+        //所以它在动作拍之前——这一拍的输入被这一拍的动作读到，不给 AI 单独多一拍迟钝
+        if (_minds != null)
+        {
+            long aiProbe = GcProbe.Begin(GcProbe.Region.EnemyThink);
+            //先数"已经有几只扑上去了"（当前动作是攻击分类的敌兵），再逐只做决策。
+            //数在前面是因为所有人要看到的是同一个数——逐个决策时边数边打，第 4 只会看见第 3 只还没进去的状态
+            int busy = 0;
+            for (int i = 0; i < _minds.Length; i++)
+            {
+                ActionInfo current = _minds[i].self.action.CurrentAction;
+                if (current.catalog == "Punch" || current.catalog == "Kick" || current.catalog == "Skill") busy++;
+            }
+            for (int i = 0; i < _minds.Length; i++) _minds[i].Tick(busy);
+            GcProbe.End(GcProbe.Region.EnemyThink, aiProbe);
+        }
+
         foreach (CharacterObj c in _all)
             c.action.Tick();
         foreach (CharacterObj c in _all)
@@ -141,7 +183,7 @@ public class GameMain : MonoBehaviour
         //相交采样：命中不再等物理回调，每个逻辑帧主动查一次
         CharacterObj.SampleOverlaps(_all, _boxBuffer);
 
-        //处理攻击和碰撞
+        //处理攻击和碰撞（敌兵现在会先动，判的就是他动完之后这一拍的位置）
         DealWithAttacks();
 
         foreach (CharacterObj c in _all)

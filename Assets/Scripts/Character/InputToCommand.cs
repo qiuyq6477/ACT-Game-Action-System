@@ -24,9 +24,12 @@ public class InputToCommand : MonoBehaviour
     /// <summary>
     /// 当前的按键记录
     /// </summary>
-    private List<KeyInputRecord> _input = new List<KeyInputRecord>();
+    //容量按"回看窗口满员"备好：一条记录活 RecordKeepFrames 拍，每拍最多登记方向四键加动作键，
+    //留一点余量。不预置的话，一个从没用过输入的角色（AI 敌兵在 2.2 之前就是这样）
+    //第一次开始登记就会连着扩容几次，而那些字节全部落在战斗那一拍上
+    private List<KeyInputRecord> _input = new List<KeyInputRecord>(RecordKeepFrames + 8);
     //最新的输入，如果是检查0的话，就会检查这个
-    private List<KeyInputRecord> _newInputs = new List<KeyInputRecord>();
+    private List<KeyInputRecord> _newInputs = new List<KeyInputRecord>(8);
 
     /// <summary>
     /// 是否是反向的，正向的代表面向右侧
