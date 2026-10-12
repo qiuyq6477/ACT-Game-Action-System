@@ -100,8 +100,9 @@ public class ActionController : MonoBehaviour
     public bool Freezing => _freezeFrames > 0;
 
     /// <summary>
-    /// 施加卡肉顿挫（HitStop）或受击硬直（HitStun），单位是逻辑帧
-    /// 【目前无人调用】：Phase 3 做打击管线时才用得上，先跟着单位法则改成帧
+    /// 施加卡肉顿挫（HitStop）或受击硬直（HitStun），单位是逻辑帧。
+    /// 取较大者而不是叠加：连续命中只是把剩下的硬重置满，不会越打越长。
+    /// 和SetFreezing的区别就在这里——这个方法立即生效，不等到换动作才写
     /// </summary>
     /// <param name="durationFrames">持续多少个逻辑帧</param>
     public void ApplyHitStop(int durationFrames)
@@ -181,7 +182,8 @@ public class ActionController : MonoBehaviour
         }
         
         _wasFrame = CurrentFrame;   //先设置这个，之后可能会被ChangeAction所改变
-        if (_preorderActions.Count > 0)
+        bool decidedAction = _preorderActions.Count > 0;
+        if (decidedAction)
         {
             int bestIndex = 0;
             int maxPriority = _preorderActions[0].Priority;
@@ -204,6 +206,10 @@ public class ActionController : MonoBehaviour
         
         //清理一下预约列表
         _preorderActions.Clear();
+        //换了动作（或循环回绕）就当帧用0步长求值一次，把新姿势立刻摆出来。
+        //少了这一步就没有打击感了：顿挫期间本来不步进Animator，受击姿势要等整个hitStun走完才亮出来，
+        //而改造前 anim.speed = 0 只冻进度、不冻"进入新状态"这件事，挨一下当场就是受击姿势
+        if (decidedAction) anim.Update(0f);
         GcProbe.End(GcProbe.Region.ActionControllerUpdate, gcProbe);
     }
 
@@ -503,7 +509,7 @@ public class ActionController : MonoBehaviour
 
     /// <summary>
     /// 加入卡帧，卡帧会叠加，但是最多不会超过一个值，并且越接近的时候增加量越少
-    /// 注意，这只能是卡帧freezing，因为他会立即暂停角色动作，而受击的hitStun是在切换动作之后，切勿走这里
+    /// 注意，这只能是攻击方的卡帧freezing，因为它会叠加；受击方的hitStun走ApplyHitStop（取较大者，不叠加）
     /// </summary>
     /// <param name="freezingFrames"></param>
     public void SetFreezing(int freezingFrames)

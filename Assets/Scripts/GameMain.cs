@@ -186,6 +186,11 @@ public class GameMain : MonoBehaviour
                 : defensePhase.selfActionChange;
         //两人相向则翻转，否则不翻转
         defender.action.PreorderActionByActionChangeInfo(defenderChange, attackerDir, attackInfo.hitStunFrames);
+        //硬直每记命中都要刷新，不能只挂在换动作上：受击方已经在Hurt里的时候，
+        //它自己的selfActionChange（Keep，优先级和攻击的targetActionChange相等）会赢下上面那个平手，
+        //于是预约是空的、ChangeAction不会发生、hitStunFrames就没人写了——连击的第二下变成零硬直。
+        //ApplyHitStop取较大者而不是叠加，所以重复命中只是把剩余硬重置满，不会越打越长。
+        defender.action.ApplyHitStop(attackInfo.hitStunFrames);
         
         //攻击方卡帧
         attacker.action.SetFreezing(attackInfo.freezeFrames);

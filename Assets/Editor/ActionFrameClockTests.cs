@@ -362,4 +362,114 @@ public class ActionFrameClockTests
         //这是表作者当年的写法，Phase 2 刻意原样保留，所以这里把它钉住，改动它必须是故意的
         Assert.AreEqual(6f / 38f * 0.2f, (func.Eval(6, param) - func.Eval(5, param)).x, 1e-5f);
     }
+
+    //==================================== 7. 顿挫期间摆的是哪套姿势 ====================================
+
+    /// <summary>
+    /// 受击方是"换成Hurt动作 + 带7帧顿挫"这一条路。这条用例量的是姿势层的时序，回答两个问题：
+    /// ① 换动作那一拍，Animator 是否真的已经切进受击状态（`anim.Update(0f)` 补的那一次顶不顶用）——
+    ///    没切过去的话，顿挫冻住的就是挨打之前的姿势，看上去就是"打了没反应"；
+    /// ② 顿挫这7拍里状态时间不许前进，第8拍才继续往前走。
+    /// 【只在测试里读 Animator】：产品代码禁止拿动画进度当逻辑真源，这里纯粹是为了把姿势量出来。
+    /// </summary>
+    [Test]
+    public void HitstopHoldsTheHurtPoseInsteadOfThePreHitOne()
+    {
+        Animator anim = _action.anim;
+        StartAction("BoxingStand");
+        RunToFrame(3);
+
+        //照 GameMain 的受击结算那样预约：换成Hurt这一类，并带7帧顿挫
+        //(受击走向来自攻击方的 targetActionChange，不是防守方自己的 selfActionChange——表里后者是Keep)
+        ActionChangeInfo change = Info("Punch1").attacks[0].targetActionChange;
+        _action.PreorderActionByActionChangeInfo(change, ForceDirection.Backward, 7);
+        Tick();
+
+        Assert.AreEqual("Hurt", _action.CurrentAction.catalog, "按受力方向应当挑出受击动作");
+        AnimatorStateInfo state = anim.GetCurrentAnimatorStateInfo(0);
+        Assert.IsFalse(anim.IsInTransition(0),
+            "表里的 transFrames 全是0，融合应当当帧就完成；还停在融合里说明补的那次求值没生效");
+        Assert.AreEqual(Animator.StringToHash(_action.CurrentAction.animKey), state.shortNameHash,
+            "换动作当帧 Animator 必须已经切进受击状态。当前状态名hash=" + state.shortNameHash +
+            "（0 表示 Animator 在编辑期根本没绑定，测不出来）");
+
+        float held = state.normalizedTime;
+        for (int i = 0; i < 7; i++)
+        {
+            Tick();
+            Assert.AreEqual(held, anim.GetCurrentAnimatorStateInfo(0).normalizedTime, 1e-6f,
+                "顿挫的第" + (i + 1) + "拍姿势必须原地不动");
+        }
+
+        Tick();
+        Assert.Greater(anim.GetCurrentAnimatorStateInfo(0).normalizedTime, held,
+            "顿挫走满7拍，第8拍受击动画才继续往前");
+    }
+
+    //==================================== 8. 重复命中的硬直从哪来 ====================================
+
+    /// <summary>
+    /// 连着打第二下的时候，受击方已经在Hurt里了，而表里 Hurt 的 defensePhase.selfActionChange 是
+    /// Keep、优先级5，跟攻击方 targetActionChange 的优先级5正好打平；GameMain 的平手判定是"各自动作占优"，
+    /// 所以 Keep 赢，预约是空的、ChangeAction 不发生。硬直如果只挂在 ChangeAction 上，第二下就是零硬直——
+    /// 这就是"punch1 有顿帧、punch2 没有"的成因。这条用例钉住修法依赖的三点契约。
+    /// </summary>
+    [Test]
+    public void RepeatedHitRefreshesHitstopWithoutChangingAction()
+    {
+        StartAction("HurtFromBackward");
+        RunToFrame(12);
+
+        ActionChangeInfo keep = Info("HurtFromBackward").defensePhase[0].selfActionChange;
+        Assert.AreEqual(ActionChangeType.Keep, keep.changeType, "表里受击动作自己是要保持的");
+        Assert.AreEqual(Info("Punch1").attacks[0].targetActionChange.priority, keep.priority,
+            "平手——所以GameMain那个严格大于的判定会让Keep赢");
+
+        //平手被Keep赢下之后：动作不换、硬直也没人写，时钟照走。这正是"第二下没顿帧"
+        int frameBefore = _action.CurrentFrame;
+        _action.PreorderActionByActionChangeInfo(keep, ForceDirection.Backward, 7);
+        Tick();
+        Assert.AreEqual("HurtFromBackward", _action.CurrentAction.id, "Keep就是什么都不换");
+        Assert.AreEqual(frameBefore + 1, _action.CurrentFrame, "预约空跑一帧，硬直没被写进去");
+
+        //所以硬直必须由ApplyHitStop当场施加：冻住时钟，判定盒保持
+        _action.ApplyHitStop(7);
+        int boxMask = _action.ActiveBeHitBoxMask;
+        Assert.AreNotEqual(0, boxMask, "第12帧起受击盒是开着的，用它确认盒子没被顿挫弄丢");
+        for (int i = 0; i < 7; i++)
+        {
+            Tick();
+            Assert.AreEqual(frameBefore + 1, _action.CurrentFrame, "硬直的第" + (i + 1) + "拍时钟不许动");
+            Assert.AreEqual(boxMask, _action.ActiveBeHitBoxMask, "硬直期间受击盒必须保持");
+        }
+        Tick();
+        Assert.AreEqual(frameBefore + 2, _action.CurrentFrame, "7拍满了，第8拍才继续");
+
+        //取较大者而不是叠加：打到一半再挨一记，只是把剩余硬重置满，不会越打越长
+        _action.ApplyHitStop(7);
+        Tick();
+        Tick();
+        _action.ApplyHitStop(7);
+        for (int i = 0; i < 7; i++)
+        {
+            Tick();
+            Assert.AreEqual(frameBefore + 3, _action.CurrentFrame, "第二次命中之后的7拍同样冻着（没叠成14）");
+        }
+        Tick();
+        Assert.AreEqual(frameBefore + 4, _action.CurrentFrame, "第二次命中也没把硬直累加");
+
+        //短的一记不能把长的截掉：还剩5拍时来一个2拍的，仍然是等到原来那7拍走完
+        _action.ApplyHitStop(7);
+        Tick();
+        Tick();
+        Tick();
+        _action.ApplyHitStop(2);
+        for (int i = 0; i < 4; i++)
+        {
+            Tick();
+            Assert.AreEqual(frameBefore + 5, _action.CurrentFrame, "2拍的那记不该把剩下的5拍提前放行");
+        }
+        Tick();
+        Assert.AreEqual(frameBefore + 6, _action.CurrentFrame, "7拍走满才继续");
+    }
 }

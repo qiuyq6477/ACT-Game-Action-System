@@ -20,7 +20,7 @@
 - 逻辑层的"时长"一律是 `int` 逻辑帧（`durationFrames`、`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。动作内部的窗口存**绝对帧号**（`FrameRange`），判定只剩整数比较。
 - 一个动作的时长真源只有表里的 `durationFrames`：窗口上界、RootMotion 的线性段、CrossFade 的 offset 全以它为标尺。美术重导 clip 之后这个数必须跟着改——跑菜单 `Tools/ACT/打印动作时长` 校对（跟实际长度对不上打 ✗，顺带查空窗口和越界窗口）。
 - `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
-- Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
+- Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
 - 五个组件（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj`）**不许**再写 Unity 的 `Update()` 回调：它们的 `Tick()` 由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动）。改成别处调用的顺序就要重新想一遍谁先谁后。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
 - 改动窗口语义、动作时钟或顿挫，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
