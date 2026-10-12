@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十二件事：
+/// 钉的十三件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -50,6 +50,9 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    一字不差（这条是兼容闸门）；韧性只在隔满恢复期之后一拍一点地回，回满就停。
 ///    【分类挑选的兜底也被第12区钉住了】：Hurt/Beaten 两支挑选函数认不出正反手 id 时必须落到候选第一行，
 ///    返回空 ActionInfo 会让移植家的角色挨打一动不动。
+/// 13. 帧事件的接收者（BeatEmUp 移植切片 2.1）：表里每一条 cue 要的名字都真能拿到素材、
+///    烟放在放它的人脚下并在换算出来的拍数上收回、超过容量只回头复用而绝不 Instantiate、
+///    镜头震动十八拍退干净、名字对不上时安静跳过而不是抛或刷 Error。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -96,6 +99,7 @@ public class ActionFrameClockTests
         if (_targetRig != null) Object.DestroyImmediate(_targetRig);
         if (_groundRig != null) Object.DestroyImmediate(_groundRig);
         if (_poiseRig != null) Object.DestroyImmediate(_poiseRig);
+        if (_receiverGo != null) Object.DestroyImmediate(_receiverGo);
         Object.DestroyImmediate(_rig);
     }
 
@@ -1040,7 +1044,7 @@ public class ActionFrameClockTests
     private void RecordCues()
     {
         _fired = new List<string>();
-        CueDispatch.Handler = (info, cue) => _fired.Add(cue.frame + "/" + info.id + "@" + _action.CurrentFrame);
+        CueDispatch.Handler = (owner, info, cue) => _fired.Add(cue.frame + "/" + info.id + "@" + _action.CurrentFrame);
     }
 
     /// <summary>
@@ -1979,6 +1983,9 @@ public class ActionFrameClockTests
     private CombatStats GiveStats(CharacterObj c, float maxHp, float attack, float defense)
     {
         if (c.Stats) Object.DestroyImmediate(c.Stats);
+        //prefab 现在真的带着霸体条（1.9 之后落盘了），而这一族用例里"多少攻多少血"必须是从零说起的，
+        //顺手把条也摘掉：要霸体的用例接着用 GivePoise 装回去
+        if (c.Poise) Object.DestroyImmediate(c.Poise);
         CombatStats stats = c.gameObject.AddComponent<CombatStats>();
         stats.maxHp = maxHp;
         stats.attack = attack;
@@ -2318,5 +2325,151 @@ public class ActionFrameClockTests
 
         Assert.IsTrue(gauge.Consume(0f), "poiseDamage 留空(0)的攻击一律打断——缺省必须站在老行为那一边");
         Assert.AreEqual(20f, gauge.Poise, 1e-4f, "而那一记其实一点韧性都没扣");
+    }
+
+    //================================ 第18区：帧事件的接收者（切片 2.1） ====================================
+    //表里那 23 条 cue 从 1.5 起就按拍求值了，却一直没有听众。这一区钉的就是那个听众：
+    //名字必须对得上素材、烟摆在该摆的地方、多少拍收回、池子只会转不会长、震手十八拍归位。
+    //【为什么不测"真的响了"】：AudioSource.PlayOneShot 在编辑器里放不出声音也查不到状态，
+    //能查的是"载到了没有"和"没载到会不会炸"，而 0 分配那一条由 Play Mode 的 PoolTick/CueFire 分区钉
+
+    private GameObject _receiverGo;
+
+    private CueReceiver MakeReceiver()
+    {
+        _receiverGo = new GameObject("ACT-Test-Receiver");
+        _receiverGo.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        //预热要扫全表，所以 GameData.Load 必须已经跑过（SetUp 负责）。
+        //初始化是显式叫的：EditMode 里 AddComponent 不触发 Awake，本工程的角色向来如此（BindBoxes 同理）
+        CueReceiver r = _receiverGo.AddComponent<CueReceiver>();
+        r.Init();
+        return r;
+    }
+
+    private static ActionCue Cue(CueKind kind, string param)
+    {
+        ActionCue c = new ActionCue();
+        c.kind = kind;
+        c.param = param;
+        return c;
+    }
+
+    /// <summary>
+    /// 表 vs 素材库的一致性：每一条 cue 要的名字都得真能拿到东西。
+    /// 这是"真源在表"之后必须补上的那半条断言——表里写了个库里没有的名字，运行期只是安静跳过，
+    /// 靠这一条在开机前就红，而不是等验收时"怎么没有挥空声"
+    /// </summary>
+    [Test]
+    public void EveryCueNameInTheTableHasItsAsset()
+    {
+        CueReceiver r = MakeReceiver();
+        foreach (ActionInfo info in GameData.AllActions())
+        {
+            if (info.cues == null) continue;
+            foreach (ActionCue c in info.cues)
+            {
+                if (c.kind == CueKind.Sfx)
+                    Assert.IsTrue(r.HasClip(c.param), info.id + " 的音效 「" + c.param + "」载不到");
+                else if (c.kind == CueKind.Effect)
+                    Assert.Greater(r.PoolCapacity(c.param), 0, info.id + " 的特效 「" + c.param + "」没建出池");
+            }
+        }
+    }
+
+    [Test]
+    public void PuffIsPlacedAtTheOwnerAndTakenBackWhenItsFramesAreUp()
+    {
+        CueReceiver r = MakeReceiver();
+        Vector3 at = new Vector3(3.25f, 0.4f, -1.5f);
+        _character.transform.position = at;
+
+        r.OnCue(_character, new ActionInfo(), Cue(CueKind.Effect, "SmokePuffLand"));
+
+        Assert.AreEqual(1, r.ActiveEffectCount("SmokePuffLand"), "响一次就该有一团烟亮起来");
+        Vector3 puff = r.PooledInstance("SmokePuffLand", 0).transform.position;
+        Assert.AreEqual(at.x, puff.x, 1e-4f, "烟要摆在放它的那个人脚下，不是世界原点");
+        Assert.AreEqual(at.y, puff.y, 1e-4f);
+        Assert.AreEqual(at.z, puff.z, 1e-4f, "纵深也要一起，否则近车道的烟会画到远车道上");
+
+        int life = r.EffectLifeFrames("SmokePuffLand");
+        Assert.Greater(life, 0, "寿命是从片子自己的粒子时长换算来的，不许是 0");
+
+        for (int i = 0; i < life - 1; i++)
+        {
+            LogicClock.Advance();
+            r.Tick();
+        }
+        Assert.AreEqual(1, r.ActiveEffectCount("SmokePuffLand"), "还没到点就收回去，烟会短一截");
+
+        LogicClock.Advance();
+        r.Tick();
+        Assert.AreEqual(0, r.ActiveEffectCount("SmokePuffLand"), "到点那一拍正好关掉");
+    }
+
+    /// <summary>
+    /// 池子只会转不会长：超过容量就回头复用最早那一槽（把它没放完的烟冲掉）。
+    /// 这条钉的是"绝不 Instantiate"——Instantiate 一次就是热路径上的一次分配
+    /// </summary>
+    [Test]
+    public void PoolRecyclesInsteadOfGrowing()
+    {
+        CueReceiver r = MakeReceiver();
+        int capacity = r.PoolCapacity("SmokePuffLand");
+        Assert.AreEqual(CueReceiver.EffectCapacity, capacity);
+
+        for (int i = 0; i < capacity + 1; i++)
+        {
+            _character.transform.position = new Vector3(i, 0f, 0f);
+            r.OnCue(_character, new ActionInfo(), Cue(CueKind.Effect, "SmokePuffLand"));
+        }
+
+        Assert.AreEqual(capacity, r.ActiveEffectCount("SmokePuffLand"), "响 7 次也只亮 6 团：多的那次是复用");
+        //第 7 次（x = 6）回绕用到第 0 槽：容量 6 个槽，前面 6 次刚好把 0..5 用光
+        Assert.AreEqual(capacity, r.PooledInstance("SmokePuffLand", 0).transform.position.x, 1e-4f,
+            "回绕到第 0 槽，并且把第七次的位置写了进去");
+        //池里除了这一名烟还有别的名（预热按表里出现的名字逐个建），所以这里比的是"从头到尾没长过"
+        Assert.AreEqual(12, _receiverGo.transform.childCount, "响 7 次也没有多 Instantiate 一个：实例数与预热时一样");
+    }
+
+    [Test]
+    public void CameraShakeDecaysOverEighteenLogicFrames()
+    {
+        CueReceiver r = MakeReceiver();
+        Assert.AreEqual(0f, r.ShakeOffsetY, "没震就是 0");
+
+        r.OnCue(_character, new ActionInfo(), Cue(CueKind.CameraShake, ""));
+
+        LogicClock.Advance();
+        r.Tick();
+        float first = r.ShakeOffsetY;
+        Assert.AreNotEqual(0f, first, "震的那一拍就该有偏移");
+        Assert.LessOrEqual(Mathf.Abs(first), CueReceiver.ShakeIntensity + 1e-4f, "幅度不许超过标定值");
+
+        LogicClock.Advance();
+        r.Tick();
+        Assert.AreNotEqual(first, r.ShakeOffsetY, "左右交替，不是往一边歪着不放");
+
+        for (int i = 0; i < CueReceiver.ShakeFrames; i++)
+        {
+            LogicClock.Advance();
+            r.Tick();
+        }
+        Assert.AreEqual(0f, r.ShakeOffsetY, "十八拍之后相机回到标定高度");
+    }
+
+    /// <summary>
+    /// 名字对不上（库里没有这个特效、表里写了个没导入的音效）时安静跳过：
+    /// 不抛、不放、也不留 Error——策划在表里多填一条没人听的 cue 不该把测试跑刷成一堆红
+    /// </summary>
+    [Test]
+    public void UnknownCueNameIsSkippedSilently()
+    {
+        CueReceiver r = MakeReceiver();
+        r.OnCue(_character, new ActionInfo(), Cue(CueKind.Effect, "NoSuchPuff"));
+        r.OnCue(_character, new ActionInfo(), Cue(CueKind.Sfx, "NoSuchSfx"));
+        r.OnCue(_character, new ActionInfo(), Cue(CueKind.Force, ""));
+
+        Assert.AreEqual(0, r.ActiveEffectCount("NoSuchPuff"), "没有池就什么都不放，而不是放一个空的");
+        Assert.IsFalse(r.HasClip("NoSuchSfx"));
     }
 }

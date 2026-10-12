@@ -33,6 +33,7 @@ public static class GcProbe
         HoldApply,
         ChangeAction,
         DamageSettle,
+        PoolTick,
         Count
     }
 

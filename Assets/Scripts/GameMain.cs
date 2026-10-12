@@ -61,6 +61,12 @@ public class GameMain : MonoBehaviour
     /// </summary>
     private Vector3 _camBase;
 
+    /// <summary>
+    /// 帧事件的接收者（声音、特效、镜头震动）。代码里挂而不是场景里摆：
+    /// 它不需要在 Inspector 上调任何东西，而手改 .unity 在编辑器不可用的时候是唯一会写坏场景的做法
+    /// </summary>
+    private CueReceiver _cueReceiver;
+
     void Awake()
     {
         //随机源必须在第一个逻辑帧之前定好种子，否则头几次抽样用的还是静态初始值
@@ -75,6 +81,10 @@ public class GameMain : MonoBehaviour
 
         //就暂时写在这里读取吧，demo自然就偷懒了
         GameData.Load();
+        //接收者必须在表读完之后才挂：它的 Awake 要扫一遍全表，把会被响到的音效载好、把特效的池备够
+        _cueReceiver = gameObject.AddComponent<CueReceiver>();
+        _cueReceiver.Init();
+        CueDispatch.Handler = _cueReceiver.OnCue;
         //同样是偷懒，把数据全塞给角色。每个角色拿到的是**自己会的那一份**：
         //actionSubset 留空就是全表（demo 那两个 3D 角色），填了 id 就只有那几招（移植进来的精灵玩家）
         GiveActionsTo(player, "BoxingStand");
@@ -145,6 +155,12 @@ public class GameMain : MonoBehaviour
 
         //最后一拍：被举者跟着举人者摆到手边，同时判断约束该不该解除
         CharacterObj.ApplyHolds(_all);
+
+        //表现回收：到点的特效关掉、镜头震动退掉。放在所有逻辑之后是因为它读的
+        //是这一拍派发出去的 cue 的到期时间，先逻辑后表现才不会有"这一拍的 cue 下一拍才被记进池子"
+        long cueProbe = GcProbe.Begin(GcProbe.Region.PoolTick);
+        _cueReceiver.Tick();
+        GcProbe.End(GcProbe.Region.PoolTick, cueProbe);
     }
 
     /// <summary>
@@ -171,7 +187,8 @@ public class GameMain : MonoBehaviour
         //只跟横向。高度跟着抬的话跳起来等于没跳（相机一起升），
         //纵深跟着走的话远车道的人永远和近车道一样大，HD-2D 的透视就白给了。
         //高度与纵深就用场景里摆好的那一个值，真正的跟随相机（含关卡边界推进）在 Step 2
-        usingCam.transform.position = new Vector3(_camBase.x + player.transform.position.x, _camBase.y, _camBase.z);
+        usingCam.transform.position = new Vector3(_camBase.x + player.transform.position.x,
+            _camBase.y + (_cueReceiver ? _cueReceiver.ShakeOffsetY : 0f), _camBase.z);
     }
 
     /// <summary>

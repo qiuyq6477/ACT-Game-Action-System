@@ -106,6 +106,7 @@ GameObject:
   - component: {fileID: 129263238729795475}
   - component: {fileID: 5438584017418042869}
   - component: {fileID: 1090849400562997928}
+  - component: {fileID: 2502188182880621568}
   m_Layer: 0
   m_Name: BeatEmUpPlayer
   m_TagString: Untagged
@@ -301,6 +302,21 @@ MonoBehaviour:
   moveSpeed: 4
   depthSpeedRate: 0.8
   laneRadius: 0.3
+--- !u!114 &2502188182880621568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1814557301425520955}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff8cce0024f7242dfa560a80d06cea50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatStats
+  maxHp: 100
+  attack: 10
+  defense: 3
 --- !u!1 &2913149404110804788
 GameObject:
   m_ObjectHideFlags: 0

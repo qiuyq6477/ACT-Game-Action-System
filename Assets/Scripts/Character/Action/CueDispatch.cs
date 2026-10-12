@@ -18,14 +18,16 @@ public static class CueDispatch
     /// <summary>
     /// 唯一的消费者。没注册的时候 cue 照样按帧求值（用例钉的就是这个时机），
     /// 只是没人听——空着不等于出错，表里有 cue 而没人处理也不该刷日志，
-    /// 因为一段动作有几条 cue 是策划决定的事
+    /// 因为一段动作有几条 cue 是策划决定的事。
+    /// 第一个参数是"这条 cue 属于哪个角色"：特效要摆在他脚边，声音的取值也看阵营，
+    /// 光给一条 ActionInfo 的话接收者只能到处找位置
     /// </summary>
-    public static Action<ActionInfo, ActionCue> Handler;
+    public static Action<CharacterObj, ActionInfo, ActionCue> Handler;
 
-    public static void Fire(ActionInfo info, ActionCue cue)
+    public static void Fire(CharacterObj owner, ActionInfo info, ActionCue cue)
     {
-        Action<ActionInfo, ActionCue> handler = Handler;
+        Action<CharacterObj, ActionInfo, ActionCue> handler = Handler;
         if (handler == null) return;
-        handler(info, cue);
+        handler(owner, info, cue);
     }
 }

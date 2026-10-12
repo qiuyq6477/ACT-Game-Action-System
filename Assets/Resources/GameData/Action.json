@@ -3194,7 +3194,7 @@
             "commands": [],
             "inputAcceptance": [],
             "autoNextActionId": "PlayerDeath",
-            "keepPlayingAnim": false,
+            "keepPlayingAnim": true,
             "autoTerminate": false,
             "attacks": [],
             "attackPhase": [],
@@ -4027,6 +4027,32 @@
                 "animKey 用 BoxingStand：这两只敌兵是 3D 灰盒，而源工程的 EnemyGrabbed 是一张精灵的 1 帧片子，它属于 BeatEmUp 那套素材（Step 2 敌兵换成精灵之后走的才是那条）。durationFrames 180 与 holdFrames 同一件事的两头：举人者和被举者约好一起结束，谁先到都把另一头带走（前者靠 keepHold，后者靠被举者换动作）"
             ],
             "priority": 10
+        },
+        {
+            "id": "EnemyDeath",
+            "durationFrames": 30,
+            "animKey": "knockdown_loop_A",
+            "catalog": "Death",
+            "priority": 20,
+            "cancelTag": [],
+            "beCancelledTag": [],
+            "tempBeCancelledTag": [],
+            "commands": [],
+            "inputAcceptance": [],
+            "autoNextActionId": "EnemyDeath",
+            "keepPlayingAnim": true,
+            "autoTerminate": false,
+            "keepHold": false,
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase": [],
+            "cues": [],
+            "说明": [
+                "demo 那一家（灰盒敌兵）的死亡行。玩家那一家有 PlayerDeath，这一家原来一行都没有，于是致命中的一记换了动作却找不到档，敌兵死后站在原地",
+                "受击阶段整个留空：死了就不该再被打到，跟 PlayerDeath 同一个道理",
+                "keepPlayingAnim 加 autoNextActionId 指向自己 = 时长走完之后停在末帧不动，而不是每 30 拍重放一次倒下",
+                "animKey 用 knockdown_loop_A：demo 控制器里那条躺在地上循环的片子"
+            ]
         }
     ]
 }

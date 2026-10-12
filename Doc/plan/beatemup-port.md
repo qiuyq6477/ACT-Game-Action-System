@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9 · 2026-10；剩 Step 2 世界与流程）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1 · 2026-10；剩 Step 2 的 AI、波次与关卡）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -299,6 +299,24 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **闸门抓到的两个真问题**（都不是"用例写错了"）：① **`blockPush` 的曲线名写成了 `GoStraight`，而那张表里根本没有这一条**——`ForceMoveMethod` 只有 `Slowly` 与 `Arc`，`GoStraight` 在**另一张**撞名的表 `RootMotionMethod` 里，于是格挡推开会静默变成"一动不动"。改成了 `Slowly`，并补了一条开机检查：`GameData.Load` 现在会对每一记攻击的 `pushPower`/`blockPush` 调 `ForceMoveMethod.Validate`，认不出名字就喊（以前 `MoveInfo.tweenMethod` 的注释写着"没有这个函数就按匀速来"，而实现是落到 `NoMove` = 不动，注释与实现相反正是这类错能藏住的原因）。② **`defensePhase.tempBeCancelledTagTurnOn` 可以是 null**：`BeHitBoxTurnOnInfo` 是结构体，而"这一记打在一个没有对应受击阶段的盒子上"是正常路径，那时候 `CanAttackTargetNow` 给回的就是一个默认值。结算整段搬进 `ResolveHit` 之后第16区的用例第一次踩到它（旧的复刻版没有那两圈 `foreach`，所以这个洞一直存在），已经补上 null 判断。
 
 **偏离与顺延**：伤害飘字与受击白闪没做——它们和 1.5/1.7 顺延的池化 cue 接收者是同一个消费者，归 Step 2 的 `EntityManager`。韧性条 UI、以及"敌兵也有霸体（重甲兵）"要等 Step 2 的敌兵招式表。`hitOtherEnemiesWhenThrown` 仍按 1.8 的登记顺延。
+
+### 切片 2.1 帧事件的接收者：音效 / 特效 / 震屏池 · 已实施 · 2026-10
+
+解决的问题：1.5 把帧事件搬进表之后，`CueDispatch.Handler` 一直空着——表里 23 条 cue 每一拍都被求值，却没有一个听众。这一片把 1.5/1.7 两次顺延下来的"池化接收者"补上，顺手收掉 Step 1 留给编辑器的两件活。
+
+- **素材**：`Audio/`（63 个 wav，连 `.meta` 原样导进来，guid 不变）与两张烟 `SmokePuffLand/SmokePuffJump.prefab` 落在 `Assets/Resources/BeatEmUp/{Audio,Effects}`，名字就是表里 cue 的 `param`（源工程也是按名字 `Resources.Load`）。没搬 `AudioController` 那个单例和它的 `AudioItem[]`——它做的事现在由一台常驻 `AudioSource` 做完。
+- **`Presentation/CueReceiver.cs`**：音效**不池**——`PlayOneShot` 天生叠放，一台 `AudioSource` 就够，比"每个声音一个 `new GameObject + AudioSource`"少一次分配也少一套回收逻辑；特效**按名字建池**，`EffectCapacity = 6` 个实例在预热时就 `Instantiate` 好并关掉，放一次只是 `SetActive(true)` + 先把粒子 `Stop(StopEmittingAndClear)` 再 `Play`（不冲掉就会看到两团烟叠在同一个槽上），超过容量就回头复用第 0 槽。收回时机是 `LogicClock.Frame + lifeFrames`，而 `lifeFrames` 从片子自己的粒子 `main.duration + startDelayMultiplier` 换算来——不让表里再写一个"多少拍"，因为那个数已经存在于素材里，抄一遍就有两个真源。
+- **派发口多了第一个参数 `owner`**：`Handler(owner, info, cue)`。只给 `ActionInfo` 的话接收者不知道这条 cue 属于谁，烟只能摆到世界原点。
+- **预热扫全表**（`GameData.AllActions()`），用到才载会把一次磁盘 IO 塞进打击那一拍；表里写的名字在库里没有 → 预热时一条 `LogWarning`，运行期安静跳过，并且由第18区的 `EveryCueNameInTheTableHasItsAsset` 在闸门里红掉。这与 `ForceMoveMethod.Validate` 同一个立场：错在数据上要在开机说清楚，不许每帧刷。
+- **震屏**只动纵向、左右交替、18 拍退干净（源工程 `CameraShake` 是 duration .3s × intensity .15 打在 `additionalYOffset` 上，换算成拍），`GameMain.LateUpdate` 读 `ShakeOffsetY`。
+- **`TickAll` 多出第九拍「表现回收」**（新分区 `GcProbe.Region.PoolTick`），排在抓取约束之后：它读的就是这一拍派发出去的 cue 的到期时间。
+- **初始化是显式的 `Init()` 而不是 `Awake`**：EditMode 下 `AddComponent` 不触发 `Awake`（本工程的 `BindBoxes` 早就是这个形状），写成 `Awake` 这一族用例根本没法测。
+- **两件留给编辑器的活**：`CombatStats`/`PoiseGauge` 正式落到两个 prefab 上（玩家 100/10/3 无霸体，敌兵 60/20/3 + 20 点霸体），以及 demo 那一家补了一行 `catalog: Death`（`EnemyDeath`，`animKey: knockdown_loop_A`），否则灰盒敌兵被打死之后站在原地。顺带抓到一个 1.7 的真缺陷：**`PlayerDeath` 的 `keepPlayingAnim` 是 false**——时长走完会预约 `autoNextActionId`（指向自己），只有 `keepPlayingAnim` 那条分支才 `KeepAction` 停在末帧，false 就等于每 65 拍重放一次"倒下"。
+- **摘帧事件**：`Tools/ACT/导出…` 旁边新增 `Tools/ACT/摘掉导入 clip 的帧事件`，20 条片子的 `m_Events` 清空（结掉 `Doc/issue/clip-animation-events-not-stripped.md`）。删的动作与读的动作分成两条命令，因为读了就删会把草稿的第二次生成变成空表——那是单向门。**改文本而不是 `clip.events = new AnimationEvent[0]`**：后者在 Unity 6 只留一句"Please use Editor.AnimationUtility…"然后把改动丢掉，内存里干净、盘上什么都没写，比直接失败更难发现。
+
+**验证**：EditMode 56/56 全绿（第18区五条：表里每个名字都有素材、烟摆在这个人脚下并在换算出来的拍数上收回、响 7 次只亮 6 团且第 0 槽被复用、震屏 18 拍归位、名字对不上时安静跳过）。批处理 Play 探针（70000 渲染帧 / 861 逻辑帧）**十五个分区全部 `avg=0 max=0`**，含新增的 `PoolTick n=358` 与 `CueFire n=1074`，自检 1056B；`no receiver` 0 条、`negative scale` 0 条、`[帧事件]` 缺素材警告 0 条。
+
+**偏离与顺延**：`CueKind.Projectile` 跟着弹射物那一片做；`CueKind.Force` 表里三处 `param` 全空（源工程 `AddForce` 也不带参数），要它得先把"cue 带一个 `MoveInfo`"这件事定了，不为一行代码造一个半套。受击白闪与伤害飘字仍归 Step 2 后面的片（它们与命中结算同源，不是 cue）。
 
 ### 顺带：恢复闸门
 

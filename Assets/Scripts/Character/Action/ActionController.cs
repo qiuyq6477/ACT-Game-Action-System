@@ -352,7 +352,7 @@ public class ActionController : MonoBehaviour
             {
                 ActionCue cue = cues[i];
                 if (cue.frame > _cueCursor && cue.frame <= CurrentFrame)
-                    CueDispatch.Fire(CurrentAction, cue);
+                    CueDispatch.Fire(Owner, CurrentAction, cue);
             }
         }
 

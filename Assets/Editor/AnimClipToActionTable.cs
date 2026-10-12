@@ -166,7 +166,96 @@ public static class AnimClipToActionTable
 
         File.WriteAllText(DumpPath, sb.ToString());
         AssetDatabase.Refresh();
-        Debug.Log("[帧数据草稿] " + clips.Count + " 条 clip 已写到 " + DumpPath + "\n" + SuspectList(clips));
+        Debug.Log("[帧数据草稿] " + clips.Count + " 条 clip 已写到 " + DumpPath + "\n" + SuspectList(clips)
+                  + "\n" + EventLeftReport(clips));
+    }
+
+    /// <summary>
+    /// 把导入进来的片子上残留的 legacy AnimationEvent 清空。
+    /// 【为什么单独一条命令、不顺手做在 Export 里】：Export 是"读片子→出草稿"的那只眼睛，
+    /// 而真源已经搬进表（见 Doc/decision/0001）。如果在读的同时就把片子擦干净，
+    /// 第二次跑 Export 只会读到一个空事件表，草稿里再也生不出 cues——单向门。
+    /// 所以读和删分成两条命令，删完了靠 EventLeftReport 那行报告确认归零。
+    /// 【为什么改文本而不是 clip.events = new AnimationEvent[0]】：Unity 6 对这个 setter 只会说一句
+    /// "Please use Editor.AnimationUtility to add persistent animation events"然后把改动丢掉，
+    /// 片子内存在这次会话里是干净、存盘却什么都没写，比直接失败更难察觉。
+    /// 而 .anim 本来就是文本序列化，删掉 m_Events 那一段与编辑器看到的完全一致
+    /// </summary>
+    [MenuItem("Tools/ACT/摘掉导入 clip 的帧事件（真源已在表里）")]
+    public static void StripClipEvents()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:AnimationClip", new[] { ClipFolder });
+        int clipsTouched = 0;
+        int eventsRemoved = 0;
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            string text = ReadText(path);
+            string stripped = StripEventsBlock(text, out int removed);
+            if (removed == 0) continue;
+            File.WriteAllText(path, stripped);
+            eventsRemoved += removed;
+            clipsTouched++;
+        }
+        AssetDatabase.Refresh();
+        Debug.Log("[摘帧事件] " + clipsTouched + " 条片子，共删掉 " + eventsRemoved + " 个 AnimationEvent");
+    }
+
+    /// <summary>
+    /// 删掉 .anim 里 m_Events 这一段的内容，只留 "m_Events: []"。
+    /// 边界按缩进判：m_Events 自己那一层以外的行一律不碰
+    /// </summary>
+    private static string StripEventsBlock(string text, out int removed)
+    {
+        removed = 0;
+        string[] lines = text.Split('\n');
+        StringBuilder sb = new StringBuilder(text.Length);
+        int i = 0;
+        while (i < lines.Length)
+        {
+            string line = lines[i];
+            string trimmed = line.TrimStart(' ');
+            bool isEvents = trimmed.StartsWith("m_Events:");
+            if (!isEvents)
+            {
+                sb.Append(line);
+                if (i < lines.Length - 1) sb.Append('\n');
+                i++;
+                continue;
+            }
+
+            int indent = line.Length - trimmed.Length;
+            sb.Append(line.Substring(0, indent)).Append("m_Events: []");
+            if (i < lines.Length - 1) sb.Append('\n');
+            i++;
+            //吃掉这一段里的所有后续行。YAML 的序列项跟键本身同缩进（.anim 里就是 m_Events 顶格的 - time:），
+            //所以除了"缩进更深"还要认"同缩进但以 - 开头"，两种都要吃掉，否则一个都删不掉
+            while (i < lines.Length)
+            {
+                string next = lines[i];
+                string nextTrimmed = next.TrimStart(' ');
+                int nextIndent = next.Length - nextTrimmed.Length;
+                if (nextTrimmed.Length == 0) { i++; continue; }
+                if (nextIndent < indent) break;
+                if (nextIndent == indent && !nextTrimmed.StartsWith("-")) break;
+                if (nextTrimmed.StartsWith("- time:")) removed++;
+                i++;
+            }
+        }
+        //Unity 写的 .anim 末尾都有一个换行，别让删一段顺手把它也删了（读回来只差一个换行，diff 会刺眼）
+        string result = sb.ToString();
+        return text.EndsWith("\n") && !result.EndsWith("\n") ? result + "\n" : result;
+    }
+
+    /// <summary>"表 vs 片子"的一致性检查：帧事件抄进表之后，片子上一个都不该留</summary>
+    private static string EventLeftReport(List<Clip> clips)
+    {
+        int left = 0;
+        foreach (Clip c in clips) if (c.cues.Count > 0) left++;
+        return left == 0
+            ? "帧事件残留：0 条片子还带着 AnimationEvent（真源只有表）"
+            : "帧事件残留：" + left + " 条片子还带着 AnimationEvent，跑「Tools/ACT/摘掉导入 clip 的帧事件」。"
+              + "留着不放，Animator 每踩到那一拍就喊一条 no receiver";
     }
 
     //================================ 抽取 ====================================

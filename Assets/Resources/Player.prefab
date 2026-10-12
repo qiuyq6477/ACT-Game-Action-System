@@ -1338,6 +1338,8 @@ GameObject:
   - component: {fileID: 914667146176712931}
   - component: {fileID: 5924997580049004770}
   - component: {fileID: 5251258270997115436}
+  - component: {fileID: 676982964039285668}
+  - component: {fileID: -7444200305031814487}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -1447,6 +1449,7 @@ MonoBehaviour:
   - TwinKick
   - TwinKickAutoCombo
   - Grabbed
+  - EnemyDeath
   defaultActionId: BoxingStand
   moveSpeed: 4
   depthSpeedRate: 0.8
@@ -1464,6 +1467,36 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FacingApply
   backend: 0
+--- !u!114 &676982964039285668
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5238658475256164722}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff8cce0024f7242dfa560a80d06cea50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatStats
+  maxHp: 60
+  attack: 20
+  defense: 3
+--- !u!114 &-7444200305031814487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5238658475256164722}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f38fa0cc26f74b1e9b18b1a24683c16, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PoiseGauge
+  maxPoise: 20
+  recoveryDelayFrames: 60
+  recoveryPerFrame: 0.5
 --- !u!1 &5429275400855984123
 GameObject:
   m_ObjectHideFlags: 0
