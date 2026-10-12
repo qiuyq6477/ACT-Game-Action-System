@@ -16,11 +16,12 @@ using UnityEngine;
 /// 源内容里缺着表要的另一半（伤害、取消标签、指令、受击阶段）——那些是玩法决定，得由人填；
 /// 工具只负责「从 clip 里能确定下来的数」。
 ///
-/// 帧号对账（本工程 1-based 逻辑帧，clip 是 60fps 的 0-based）：
-/// 本工程的第 n 拍覆盖动作时间的 [(n-1)/60, n/60)，所以 clip 的第 f 帧 = 本工程的第 f+1 拍；
-/// 而表里的窗口是「这一段被跨过就算数」（生效帧 = min..max+1），于是
-/// min = 抬起那一帧 + 1，max = 落下那一帧 − 1，
-/// 这样生效集合正好等于原片子里盒子开着的那几帧。
+/// 帧号对账：本工程第 n 拍里先 `anim.Update(1/60)` 再把 CurrentFrame++，
+/// 所以第 n 拍摆出来的姿势就是 clip 的第 n 帧（0-based），两边是【恒等】关系，不是 f+1。
+/// 而表里的窗口是「这一段被跨过就算数」：生效帧 = min..max+1（见 FrameRange 与 ActionFrameClockTests 第 1 区），
+/// 要让生效集合正好等于源片子里盒子开着的那几帧（on..off−1），就得写
+/// min = on，max = off − 2。
+/// 盒子只开一帧时这条公式给不出区间（窗口至少跨两拍生效），只能写成 [on,on] 多带一拍，会在报告里点名。
 /// 这套换算必须写在代码旁边，因为 1.7 往表里填数的时候没人能独立验它——差一帧就是 16.7 毫秒的手感。
 ///
 /// 【为什么读 .anim 的文本而不是走 AnimationUtility】：盒子的位置与缩放是 typed 曲线
@@ -258,6 +259,23 @@ public static class AnimClipToActionTable
         return blocks;
     }
 
+    /// <summary>
+    /// 曲线的一段活跃区间（clip 的 0-based，on 那一帧起开、off 那一帧已经关了）→ 表里的 inFrames。
+    /// 生效集合要求正好等于 on..off−1，而本工程把窗口当区间（生效 = min..max+1），所以是 max = off − 2。
+    /// 只开一帧的区间落不进这套语义：写 [on,on] 会生效两拍，只能认下来并由 Check 点名
+    /// </summary>
+    private static void ToRange(Span w, int durationFrames, out int min, out int max)
+    {
+        if (w.offFrame == int.MaxValue)
+        {
+            min = w.onFrame;
+            max = durationFrames - 2 < w.onFrame ? w.onFrame : durationFrames - 2;
+            return;
+        }
+        min = w.onFrame;
+        max = w.offFrame - 2 < w.onFrame ? w.onFrame : w.offFrame - 2;
+    }
+
     private static List<Cue> ReadEvents(string text)
     {
         List<Cue> cues = new List<Cue>();
@@ -292,7 +310,7 @@ public static class AnimClipToActionTable
     {
         return new Cue
         {
-            frame = Frame(time) + 1,       //同一套换算：clip 的第 f 帧 = 本工程的第 f+1 拍
+            frame = Frame(time),           //恒等映射：clip 的第 f 帧就是本工程的第 f 拍
             text = func + (string.IsNullOrEmpty(data) || data == "None" ? "" : "(" + data + ")")
         };
     }
@@ -418,13 +436,14 @@ public static class AnimClipToActionTable
 
         foreach (Span w in c.windows)
         {
-            int min = w.onFrame + 1, max = w.offFrame - 1;
-            if (max < min)
-                c.suspects.Add("盒子只开一帧（第 " + min + " 拍）。表里的窗口是跨过就算数，" +
-                               "写成 [" + min + "," + min + "] 会多活一拍——要么认了这一拍，要么这条本身要改玩法");
-            if (w.onFrame >= c.durationFrames)
-                c.suspects.Add("窗口从第 " + (w.onFrame + 1) + " 帧开，但片子只有 " + c.durationFrames + " 帧，永远跑不到");
-            if (w.offFrame != int.MaxValue && w.offFrame > c.durationFrames)
+            int min, max;
+            ToRange(w, c.durationFrames, out min, out max);
+            if (w.offFrame != int.MaxValue && w.offFrame - w.onFrame == 1)
+                c.suspects.Add("盒子只开一帧（第 " + min + " 拍）。本工程的窗口是区间（生效 = min..max+1），" +
+                               "一帧装不下，写成 [" + min + "," + max + "] 会生效两拍——要么认了这一拍，要么这条本身要改玩法");
+            if (w.onFrame > c.durationFrames)
+                c.suspects.Add("窗口从第 " + w.onFrame + " 帧开，但片子只有 " + c.durationFrames + " 帧，永远跑不到");
+            if (w.offFrame != int.MaxValue && w.offFrame > c.durationFrames + 1)
                 c.suspects.Add("窗口在第 " + w.offFrame + " 帧落下，已经超出片长 " + c.durationFrames + " 帧");
         }
 
@@ -560,14 +579,16 @@ public static class AnimClipToActionTable
           .Append(" 条 clip 的判定盒窗口、盒子轨迹、动画事件翻成整数逻辑帧，")
           .Append("供 `beatemup-port.md` 的切片 1.7 往 `Assets/Resources/GameData/Action.json` 里填行。\n\n");
         sb.Append("## 帧号怎么对账\n\n");
-        sb.Append("本工程的第 n 拍覆盖动作时间的 [(n-1)/60, n/60)，源 clip 是 60fps 的 0-based，");
-        sb.Append("所以 **clip 的第 f 帧 = 本工程的第 f+1 拍**。表里的窗口是「这一段被跨过就算数」（生效帧 = min..max+1），");
-        sb.Append("因此导出的时候 **min = 抬起那一帧 + 1，max = 落下那一帧 − 1**，");
+        sb.Append("本工程第 n 拍里先 `anim.Update(1/60)` 再把 CurrentFrame++，所以第 n 拍摆出来的姿势就是 clip 的第 n 帧——");
+        sb.Append("两边是【恒等】关系（0-based 对 0-based 的姿势序号，本工程拍号从 1 起算，但换动作那一拍不算）。");
+        sb.Append("表里的窗口是「这一段被跨过就算数」（生效帧 = min..max+1，见 `FrameRange`），");
+        sb.Append("因此导出的时候 **min = 抬起那一帧，max = 落下那一帧 − 2**，");
         sb.Append("这样生效集合正好等于原片子里盒子开着的那几帧，一帧不多一帧不少。");
-        sb.Append("盒子只开一帧的情况这条公式给不出来（窗口至少跨两拍），已在各条片子的【可疑】里点名。\n");
-        sb.Append("\n这条换算是照着源工程的读法对出来的，不是猜的：它在 MonoBehaviour 的 Update 里读 " +
+        sb.Append("盒子只开一帧的情况这条公式装不下（区间语义至少生效两拍），已在各条片子的【可疑】里点名。\n");
+        sb.Append("\n这个对法不是推出来的，是两边各读了一遍代码：源工程在 MonoBehaviour 的 Update 里读 " +
                   "`hitBox.gameObject.activeSelf`（`UnitActions.cs:344`），而 Animator 在同一帧的更早阶段求值曲线，" +
-                  "所以 clip 的第 f 帧恰好在第 f 个渲染帧被读到；本工程 60Hz 下第 f 个渲染帧就是第 f+1 拍。\n\n");
+                  "所以第 f 个渲染帧摆出 clip 第 f 帧的姿势、也在那一帧判命中；" +
+                  "本工程第 n 拍同样摆第 n 帧、同样在这一拍结算命中。\n\n");
         sb.Append("## 源工程的判定盒规格\n\n");
         sb.Append("源工程全场只有一只 `HitBox`，每招靠 clip 里的位置和缩放曲线把它挪到拳头或脚上——");
         sb.Append("这就是本工程要加「盒子轨迹」（切片 1.5）的原因。常驻规格：\n");
@@ -599,12 +620,12 @@ public static class AnimClipToActionTable
             return;
         }
 
-        if (c.windows.Count > 0) sb.Append("- 判定盒窗口（表里的 inFrames）：").Append(Ranges(c.windows)).Append("\n");
+        if (c.windows.Count > 0) sb.Append("- 判定盒窗口（表里的 inFrames）：").Append(Ranges(c.windows, c)).Append("\n");
         else sb.Append("- 判定盒窗口：没有 m_IsActive 曲线\n");
 
         if (c.enabledWindows.Count > 0)
             sb.Append("- 精灵可见窗口（m_Enabled，只影响看不看得见，别当判定窗口用）：")
-              .Append(Ranges(c.enabledWindows)).Append("\n");
+              .Append(Ranges(c.enabledWindows, c)).Append("\n");
 
         if (c.trackFrames.Count > 0)
         {
@@ -636,11 +657,16 @@ public static class AnimClipToActionTable
         Suspects(sb, c);
     }
 
-    private static string Ranges(List<Span> spans)
+    private static string Ranges(List<Span> spans, Clip c)
     {
         List<string> outs = new List<string>();
         foreach (Span w in spans)
-            outs.Add("[" + (w.onFrame + 1) + "," + (w.offFrame == int.MaxValue ? "片尾" : (w.offFrame - 1).ToString()) + "]");
+        {
+            int min, max;
+            ToRange(w, c.durationFrames, out min, out max);
+            outs.Add("[" + min + "," + max + "]（源片子开着的是第 " + w.onFrame + ".." +
+                     (w.offFrame == int.MaxValue ? "片尾" : (w.offFrame - 1).ToString()) + " 帧）");
+        }
         return string.Join(" ", outs);
     }
 
@@ -648,8 +674,11 @@ public static class AnimClipToActionTable
     {
         List<string> outs = new List<string>();
         foreach (Span w in c.windows)
-            outs.Add("{\"min\": " + (w.onFrame + 1) + ", \"max\": " +
-                     (w.offFrame == int.MaxValue ? c.durationFrames - 1 : w.offFrame - 1) + "}");
+        {
+            int min, max;
+            ToRange(w, c.durationFrames, out min, out max);
+            outs.Add("{\"min\": " + min + ", \"max\": " + max + "}");
+        }
         return string.Join(", ", outs);
     }
 
