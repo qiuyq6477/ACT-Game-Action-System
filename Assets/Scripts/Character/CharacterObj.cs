@@ -100,7 +100,19 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     public static IReadOnlyList<CharacterObj> Units => _units;
 
-    
+    /// <summary>
+    /// 这个角色只会的动作 id。留空 = 会全表（demo 里玩家与敌兵就是这样）。
+    /// 【为什么要有这个】：全工程一张动作表是"所有角色都会所有招"的偷懒假设，
+    /// 移植进来的玩家招式表和敌兵的招式表一旦同表，同一个按键会被两边抢（谁赢取决于填表顺序），
+    /// 而 byCatalog 挑受击动作时也会把"敌兵根本不会的招式"端上当候选。
+    /// 子集在这里声明，`GameMain` 在 Awake 里据此把每一份表交给各自的 `ActionController.SetAllActions`
+    /// </summary>
+    [Tooltip("这个角色只会的动作 id，留空表示会全表")]
+    public string[] actionSubset;
+
+    /// <summary>开场动作 id</summary>
+    [Tooltip("开场动作的 id")]
+    public string defaultActionId;
     /// <summary>
     /// 被强制移动，最多只有一个被强制移动
     /// </summary>

@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的八件事：
+/// 钉的九件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -32,6 +32,8 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；
 ///    随机数只由种子和抽样次数决定（换帧率分法、换种子、退化点、取值范围全钉住）；
 ///    函数名写错时门禁按"不成立"处理而不是放行。
+/// 9. 每角色自己的动作子集（切片 1.7 的前置）：分类候选建在角色自己那份表上，
+///    不会把"这个角色根本不会的招式"端上候选。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -1436,5 +1438,38 @@ public class ActionFrameClockTests
         StartCustom(Waiting("Long", "NoGate"), Comeback("AnyPunch", "NoGate", new ScriptMethodInfo(), KeyMap.Punch));
         Tick(KeyMap.Punch);
         Assert.AreEqual("AnyPunch", _action.CurrentAction.id, "没配条件的动作行为不许有任何变化");
+    }
+
+    //==================================== 14. 每角色自己的动作子集（切片 1.7 的前置） ====================================
+
+    /// <summary>
+    /// 分类索引建在角色自己那份表上，而不是建在全工程那张大表上。
+    /// 【为什么这是一条独立的用例】：移植进来的玩家招式与 demo 的拳击招式一旦同表，
+    /// "敌兵不会 Hurt 那一类"和"玩家不会 TurnBack"这种事必须由子集说清楚；
+    /// 索引还在全局的话，byCatalog 会把角色根本不会的招式端上候选，
+    /// 于是"挨了一下切到什么动作"取决于全表的行序，而那是查不出来的错
+    /// </summary>
+    [Test]
+    public void CatalogLookupFollowsTheCharactersOwnActionSubset()
+    {
+        StartAction("Punch1");
+        _action.PreorderActionByActionChangeInfo(HurtByCatalog(), ForceDirection.Forward);
+        Tick();
+        Assert.AreEqual("HurtFromForward", _action.CurrentAction.id,
+            "前提：整张表在场时 byCatalog 会挑到 Hurt 那一类");
+
+        _action.SetAllActions(GameData.ActionsFor(new[] {"BoxingStand", "Punch1"}), "Punch1");
+        Assert.AreEqual(2, _action.AllActions.Count, "这个角色现在只会两招");
+        Assert.AreEqual(13, GameData.AllActions().Count, "ActionsFor 只挑不改，全表还是 13 行");
+
+        _action.PreorderActionByActionChangeInfo(HurtByCatalog(), ForceDirection.Forward);
+        Tick();
+        Assert.AreEqual("Punch1", _action.CurrentAction.id,
+            "这个角色的子集里没有 Hurt 那一类，候选必须是空的，动作不许被换掉");
+    }
+
+    private static ActionChangeInfo HurtByCatalog()
+    {
+        return new ActionChangeInfo {changeType = ActionChangeType.ChangeByCatalog, param = "Hurt"};
     }
 }

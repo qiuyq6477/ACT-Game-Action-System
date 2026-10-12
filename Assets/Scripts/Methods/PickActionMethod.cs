@@ -8,7 +8,8 @@ using UnityEngine;
 /// key是Catalog
 /// value是(ActionInfo[] of candidates, ForceDirection)=>ActionInfo
 /// 执行value获得一个结果
-/// 候选数组由 GameData.ActionsOfCatalog 的倒排索引给出，是只读的静态数据，别去改它的长度或元素
+/// 候选数组由 ActionController.ActionsOfCatalog 的倒排索引给出（建在这个角色自己那份动作表上），
+/// 是只读的静态数据，别去改它的长度或元素
 /// </summary>
 public static class PickActionMethod
 {

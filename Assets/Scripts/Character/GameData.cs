@@ -9,8 +9,6 @@ public static class GameData
     private static bool _loaded = false; 
     public static Dictionary<string, ActionInfo> Actions = new Dictionary<string, ActionInfo>();
     private static List<ActionInfo> _cachedAllActions = new List<ActionInfo>();
-    private static Dictionary<string, ActionInfo[]> _catalogIndex = new Dictionary<string, ActionInfo[]>();
-    private static readonly ActionInfo[] NoActions = new ActionInfo[0];
     
     public static void Load()
     {
@@ -65,8 +63,6 @@ public static class GameData
                 }
             }
         }
-
-        BuildCatalogIndex();
     }
 
     public static List<ActionInfo> AllActions()
@@ -75,43 +71,25 @@ public static class GameData
     }
 
     /// <summary>
-    /// 按分类取出这一类的动作，没有就给空数组，运行期不再产生任何临时对象
-    /// 【前置条件】索引是对整张表建的，前提是所有角色共用同一份动作表
-    /// （GameMain 把 AllActions() 返回的同一个 List 交给每个 ActionController）。
-    /// 等 Phase 4 做出"每个角色只会一部分动作"，这个索引就得下移到 ActionController 里
+    /// 按 id 取出"某个角色只会这些"的那一份表。返回的是**新建的 List**，
+    /// 所以每个角色的子集互不影响；ids 留空则给回共享的全表引用（demo 里那两个角色就是这样）
+    /// 【只在初始化期调用】：这里分配一次，运行期不再碰
     /// </summary>
-    /// <param name="catalog">动作分类，即 ActionInfo.catalog</param>
-    /// <returns></returns>
-    public static ActionInfo[] ActionsOfCatalog(string catalog)
+    /// <param name="ids">这个角色会的动作 id，顺序不重要</param>
+    public static List<ActionInfo> ActionsFor(string[] ids)
     {
-        //配表漏填的 param 会是 null，而字典不接受 null 键，这里先挡掉
-        if (string.IsNullOrEmpty(catalog)) return NoActions;
-        return _catalogIndex.TryGetValue(catalog, out ActionInfo[] actions) ? actions : NoActions;
-    }
-
-    /// <summary>
-    /// 分类倒排索引：以前每次受击/派生都要 new 一个 List 再全表扫一遍 catalog 字符串
-    /// 现在只有初始化期分配，运行期只读
-    /// </summary>
-    private static void BuildCatalogIndex()
-    {
-        Dictionary<string, List<ActionInfo>> grouped = new Dictionary<string, List<ActionInfo>>();
-        foreach (ActionInfo info in _cachedAllActions)
+        if (ids == null || ids.Length == 0) return _cachedAllActions;
+        List<ActionInfo> subset = new List<ActionInfo>(ids.Length);
+        for (int i = 0; i < ids.Length; i++)
         {
-            if (string.IsNullOrEmpty(info.catalog)) continue;
-            if (!grouped.TryGetValue(info.catalog, out List<ActionInfo> group))
+            if (!Actions.TryGetValue(ids[i], out ActionInfo info))
             {
-                group = new List<ActionInfo>();
-                grouped[info.catalog] = group;
+                Debug.LogError("动作表里没有 id 为 \"" + ids[i] + "\" 的行：这个角色的招式表要核对一下，" +
+                               "现在这条被跳过了，它会既搓不出来也没有动画");
+                continue;
             }
-            group.Add(info);
+            subset.Add(info);
         }
-
-        _catalogIndex.Clear();
-        foreach (KeyValuePair<string, List<ActionInfo>> kv in grouped)
-        {
-            //定长数组：运行期只能按下标取，长度也改不动
-            _catalogIndex.Add(kv.Key, kv.Value.ToArray());
-        }
+        return subset;
     }
 }

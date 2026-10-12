@@ -34,7 +34,7 @@
 
 - 第四张函数表 `Methods/CancelConditionMethod.cs`：派生在「窗口 + 标签 + 指令」之后再过一道门禁（`StateIs` 地面/空中、`NearbyUnitInAction` 近处有谁），表里填 `CancelTag.cancelCondition = {method, param}`；**留空 = 没有门禁**，现有表项行为一字不变。函数名写错按**不成立**处理（默认放行等于悄悄拆门禁），参数在 `GameData.Load` 的 `Validate` 里检查，不留到战斗中间让 `float.Parse` 抛。
 - 查"场上有谁"只走 `CharacterObj.Units`（注册在 `BindBoxes`、注销在 `OnDestroy`），**禁** `FindGameObjectsWithTag`。列表次序就是 Awake 次序、跨运行不稳定，平局裁决必须自己按位置或 id 排。
-- `GameData.ActionsOfCatalog` 的倒排索引是对整张动作表建的，前提是所有角色共用同一份表（`GameMain` 把 `AllActions()` 的同一个 List 交给每个 `ActionController`）。角色一旦有了自己的动作子集，索引必须下移到 `ActionController`。
+- 分类倒排索引建在 `ActionController` 上（`SetAllActions` 里随"这个角色的那份表"一起重建），每个角色只会一份子集（`CharacterObj.actionSubset`，留空 = 全表）。**不许**把索引挪回 `GameData` 按全表建：那会把角色根本不会的招式端上 byCatalog 候选，"挨一下切到什么动作"就取决于全表的行序。开场 id 同理走 `CharacterObj.defaultActionId`，没填才退回 `GameMain` 里写死的那两个。
 
 ## 性能验证
 

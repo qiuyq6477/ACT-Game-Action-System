@@ -35,6 +35,13 @@ public class ActionController : MonoBehaviour
     public List<ActionInfo> AllActions { get; private set; } = new List<ActionInfo>();
 
     /// <summary>
+    /// 分类倒排索引的两层：List 只在 SetAllActions 里存在过，定好的数组才是运行期读的
+    /// </summary>
+    private readonly Dictionary<string, List<ActionInfo>> _catalogIndex = new Dictionary<string, List<ActionInfo>>();
+    private readonly Dictionary<string, ActionInfo[]> _catalogArray = new Dictionary<string, ActionInfo[]>();
+    private static readonly ActionInfo[] NoActions = new ActionInfo[0];
+
+    /// <summary>
     /// 当前帧的动画切换请求，如果一个也没有，则会继续当前的动作
     /// </summary>
     private List<PreorderActionInfo> _preorderActions = new List<PreorderActionInfo>();
@@ -520,16 +527,58 @@ public class ActionController : MonoBehaviour
     }
 
     /// <summary>
-    /// 初始化：设置所有的动作
-    /// 【只能换引用，不能Clear】：传进来的是 GameData.AllActions() 的那一份共享表，
+    /// 初始化：把这个角色"会的动作"换成给定的一份，并立刻切到默认动作。
+    /// 【只能换引用，不能Clear】：传进来的可能是 `GameData.AllActions()` 那一份共享表，
     /// 对着同一个控制器第二次调用时，Clear 就把全工程的表一起擦了
+    /// 【索引跟着表一起重建】：分类倒排索引建在控制器上而不是 GameData 上，
+    /// 这样"敌兵只会那三条"和"玩家只会整套招式"才各自算得对（切片 1.7）
     /// </summary>
-    /// <param name="actions"></param>
-    /// <param name="defaultActionId"></param>
+    /// <param name="actions">这一角色会的动作，null 表示不动</param>
+    /// <param name="defaultActionId">开场动作</param>
     public void SetAllActions(List<ActionInfo> actions, string defaultActionId)
     {
-        if (actions != null) AllActions = actions;
+        if (actions != null)
+        {
+            AllActions = actions;
+            BuildCatalogIndex();
+        }
         ChangeAction(defaultActionId, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// 本角色这份动作表的分类倒排索引：以前它建在 GameData 上、对全表建，
+    /// 前提是所有角色共用一张表；角色一旦有子集，那个索引就会把"不会的动作"也端出来当候选
+    /// 【只在 SetAllActions 里建一次】：运行期只读，热路径不分配
+    /// </summary>
+    private void BuildCatalogIndex()
+    {
+        _catalogIndex.Clear();
+        foreach (ActionInfo info in AllActions)
+        {
+            if (string.IsNullOrEmpty(info.catalog)) continue;
+            if (!_catalogIndex.TryGetValue(info.catalog, out List<ActionInfo> group))
+            {
+                group = new List<ActionInfo>();
+                _catalogIndex[info.catalog] = group;
+            }
+            group.Add(info);
+        }
+
+        _catalogArray.Clear();
+        foreach (KeyValuePair<string, List<ActionInfo>> kv in _catalogIndex)
+            _catalogArray[kv.Key] = kv.Value.ToArray();
+    }
+
+    /// <summary>
+    /// 按分类取出本角色会的动作，没有就给空数组，运行期不再产生任何临时对象
+    /// </summary>
+    /// <param name="catalog">动作分类，即 ActionInfo.catalog</param>
+    /// <returns></returns>
+    private ActionInfo[] ActionsOfCatalog(string catalog)
+    {
+        //配表漏填的 param 会是 null，而字典不接受 null 键，这里先挡掉
+        if (string.IsNullOrEmpty(catalog)) return NoActions;
+        return _catalogArray.TryGetValue(catalog, out ActionInfo[] actions) ? actions : NoActions;
     }
 
     /// <summary>
@@ -547,7 +596,7 @@ public class ActionController : MonoBehaviour
                 break;
             case ActionChangeType.ChangeByCatalog:
                 long gcProbe = GcProbe.Begin(GcProbe.Region.ChangeByCatalog);
-                ActionInfo[] actions = GameData.ActionsOfCatalog(acInfo.param);
+                ActionInfo[] actions = ActionsOfCatalog(acInfo.param);
                 if (actions.Length > 0)
                 {
                     ActionInfo picked = actions[0];

@@ -66,12 +66,11 @@ public class GameMain : MonoBehaviour
 
         //就暂时写在这里读取吧，demo自然就偷懒了
         GameData.Load();
-        //同样是偷懒，把数据全塞给角色
-        player.action.SetAllActions(GameData.AllActions(), "BoxingStand");
+        //同样是偷懒，把数据全塞给角色。每个角色拿到的是**自己会的那一份**：
+        //actionSubset 留空就是全表（demo 那两个 3D 角色），填了 id 就只有那几招（移植进来的精灵玩家）
+        GiveActionsTo(player, "BoxingStand");
         foreach (CharacterObj e in enemy)
-        {
-            e.action.SetAllActions(GameData.AllActions(), "TurnBack");
-        }
+            GiveActionsTo(e, "TurnBack");
 
         _all = new CharacterObj[enemy.Count + 1];
         _all[0] = player;
@@ -129,6 +128,17 @@ public class GameMain : MonoBehaviour
         }
 
         CharacterObj.SeparateLanes(_all);
+    }
+
+    /// <summary>
+    /// 把一个角色"会的动作"交给它的控制器。
+    /// 【默认动作优先取 prefab 上填的】：移植进来的精灵玩家开场是 PlayerIdle，跟 demo 的 BoxingStand 不是一回事；
+    /// 没填就退回 GameMain 里原来写死的那两个，免得为了加角色去改场景
+    /// </summary>
+    private static void GiveActionsTo(CharacterObj c, string defaultFallback)
+    {
+        string startId = string.IsNullOrEmpty(c.defaultActionId) ? defaultFallback : c.defaultActionId;
+        c.action.SetAllActions(GameData.ActionsFor(c.actionSubset), startId);
     }
 
     private static void TickBoxes(CharacterObj c)
