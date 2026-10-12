@@ -445,14 +445,14 @@ public class CharacterObj : MonoBehaviour
     /// 算出的 groundY 与 z 无关，所以推完不必再探一次地。但关卡边界要到下一拍的 Move() 里才会重新夹住
     /// </summary>
     /// <param name="all">场上全部角色，顺序即优先级：完全重位时靠这个顺序定死谁往后退</param>
-    public static void SeparateLanes(CharacterObj[] all)
+    public static void SeparateLanes(IReadOnlyList<CharacterObj> all)
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.LaneSeparate);
-        for (int i = 0; i < all.Length; i++)
+        for (int i = 0; i < all.Count; i++)
         {
             CharacterObj a = all[i];
             if (!a) continue;
-            for (int j = i + 1; j < all.Length; j++)
+            for (int j = i + 1; j < all.Count; j++)
             {
                 CharacterObj b = all[j];
                 if (!b) continue;
@@ -578,14 +578,14 @@ public class CharacterObj : MonoBehaviour
     /// </summary>
     /// <param name="all">场上全部角色</param>
     /// <param name="buffer">常驻缓冲区，所有角色共用一个就够：一次查询只涉及一个攻击盒</param>
-    public static void SampleOverlaps(CharacterObj[] all, Collider[] buffer)
+    public static void SampleOverlaps(IReadOnlyList<CharacterObj> all, Collider[] buffer)
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.SampleOverlaps);
         //角色是直写transform.position的，而工程里m_AutoSyncTransforms=0，
         //不手动同步的话查询看到的还是上一个物理步留下的旧位置，快位移照样会穿盒
         Physics.SyncTransforms();
 
-        for (int i = 0; i < all.Length; i++)
+        for (int i = 0; i < all.Count; i++)
         {
             CharacterObj c = all[i];
             if (!c) continue;
@@ -883,10 +883,10 @@ public class CharacterObj : MonoBehaviour
     /// 【那一拍只摆位不记 id】：见 _heldActionId 的说明
     /// </summary>
     /// <param name="all">GameMain 手里那份全体角色</param>
-    public static void ApplyHolds(CharacterObj[] all)
+    public static void ApplyHolds(IReadOnlyList<CharacterObj> all)
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.HoldApply);
-        for (int i = 0; i < all.Length; i++)
+        for (int i = 0; i < all.Count; i++)
         {
             CharacterObj holder = all[i];
             if (!holder) continue;

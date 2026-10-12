@@ -46,7 +46,7 @@
 
 ## 性能验证
 
-- 每帧分配用 `GcProbe.cs` 的分区探针量，判据是**分区 0 B/帧**而不是整帧 0 B（调试 UI 的残留见 `Doc/issue/ui-inputtext-per-frame-alloc.md`）。
+- 窗口按**逻辑帧**开（`LogicClock.Frame % 300`，5 秒一个窗）而不是渲染帧——`-nographics` 下两者差 80 多倍，按渲染帧开窗的话一个窗口只有几拍，稳态与头部增长混在一起看不出来。注意 `GC Allocated In Frame` 计数是**按渲染帧**清零的，探针若在同一个渲染帧里打印，那行的字符串拼接会被算进正在收尾的分区。每帧分配用 `GcProbe.cs` 的分区探针量，判据是**分区 0 B/帧**而不是整帧 0 B（调试 UI 的残留见 `Doc/issue/ui-inputtext-per-frame-alloc.md`）。
 - 分配计数只认 `Unity.Profiling.ProfilerRecorder` 的 `ProfilerCategory.Memory / "GC Allocated In Frame"`；`Profiler.GetMonoUsedSizeLong()` 在编辑器里一帧之内不动，用它做差值会量到恒 0（Unity 2023.2 也已无 `GetAllocatedBytesForCurrentThread`）。
 - 任何"全 0"的测量结论，必须自带一个已知非零的对照量（GcProbe 的自检是 1024 字节的分配）；对照量为 0 就说明量的是个瞎指标。详见 `Doc/bugfix/gc-probe-false-zero.md`。
 - 0 B/帧的判据看**稳态**：常驻 List 的头几次扩容、某个静态类第一次被摸到时的构造（如 `PickActionMethod` 的字典与委托）都会记出一次性非零，别当回归去追。

@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2 · 2026-10；剩波次与关卡）
+> 状态：实施中（Step 1 全部完成 1.1–1.9，Step 2 已落 2.1、2.2、2.3 前半 · 2026-10；剩相机边界推进、HUD、输入层、弹射物与道具）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -335,6 +335,25 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **顺带**：`EnemyMind.Tick` 只登记按键这件事，让"AI 之后不动"与"表没填对"两种情况第一次能被分开查；而这一片也顺带暴露了常驻列表没预置的问题（上面那段）。
 
 **偏离与顺延**：源工程的 `EnemyKeepDistance`（打不着就横向拉到 2/4 米再抖纵深）没做——它的功能是"别挤在一块"，而本工程已经有同轨推挤那一拍。`defendChance`（敌兵概率格挡）留在字段外面没做，等敌兵自己的招式表（现在敌兵用的还是 demo 那一家）。`hitOtherEnemiesWhenThrown` 仍按 1.8 登记顺延。
+
+### 切片 2.3（上）波次表与关卡推进 · 已实施 · 2026-10
+
+解决的问题：敌兵是**摆在场景里**的（`GameMain.enemy` 那一排 Inspector 引用）。源工程靠 `wave.SetActive(true)` 当"生成"、靠订阅 `HealthSystem.onUnitDeath` 数人数，于是"加一关"要动 `.unity`——本工程既不改也不手写 .unity（编辑器还卡在播放模式，手写场景是唯一会静默写坏东西的做法）。
+
+- **新增第二份表**：`Assets/Resources/GameData/Wave.json`。一关有哪几波、每波有谁、站在哪个 x 与 z（z 是纵深车道，源工程那一关所有人 y 都是 0，这里一开始就分车道，免得同轨推挤替美术做决定）。数值抄 `03_Level1`：三波、2/3/3 只。`WaveTable.Load` 与 `GameData.Load` 同一形状（`JsonUtility` + 开机一次 + 校验），校验里比 1.9 多一条硬规矩：**表里的预制体必须挂 `CombatStats`**，因为"他不会死"等于"这一波永远清不完、关卡卡在第二波"，那是一个查不出原因的卡死。
+- **`WaveManager` 不自己 Instantiate**：生成一个人要做事不止一处（认盒子、给他自己那份子集、挂决策器、进全体列表），那些全是 `GameMain` 的知识。所以 `spawn` 是一个委托，`GameMain.SpawnUnit` 注进来。这一条让"第几波什么时候开"能在**没有场景**的 EditMode 里单独钉住——第20区四条用例全是这样跑的。
+- **推进条件**：`AliveInWave == 0` 且 `WaveIndex < waves.Length`，然后**下一波不在同一拍开**：清完那一拍只排期，隔满 `framesBetweenWavesFrames`（45 拍）才开。源工程是上一波最后一个人刚倒、下一波第一人已经贴脸。
+- **`GameMain` 那三个"偷懒"字段收掉了两个**：`_all` 从数组变 `List`（战斗中要往里加人），`DealWithAttacks` 过 `_all` 而不是过 Inspector 上那份 `enemy`；`CharacterObj.SampleOverlaps/SeparateLanes/ApplyHolds` 三个静态入口随之改收 `IReadOnlyList<CharacterObj>`（数组本来就实现它，用例那边一个字不用改）。`TickAll` 多出第 0 拍「波次」，排在输入之前，于是新生成的人这一拍就走完整条链，不白站一拍。
+- **`GameMain.PlaceCharacter` 是静态真入口**：实例化 + 认盒子 + 交子集三件事都在里面，用例直接打它。播放模式里 `Instantiate` 已经把 `Awake` 跑完（`Awake` 里就调 `BindBoxes`），编辑模式不跑，所以那里有个 `if (c.AttackBoxes == null)` 的补调——`BindBoxes` 自己认幂等（`Units` 里查重）。
+- **`useWaveTable` 开着时，场景里预摆的那几只会 `Destroy`**：波次表就是它们的替代品，留着等于同一批兵出现两次。关掉开关退回原样，于是 demo 那一关还能按老样子跑。
+- **顺带把 `GcProbe` 的窗口从渲染帧改成逻辑帧**（`LogicClock.Frame % 300`，一个窗口就是 5 秒）：`-nographics` 下两者差 80 多倍，按渲染帧开窗的话一个窗口只有几拍，稳态和一次性头部增长混在一起，读出来的数字没有含义。
+- 生成用的 prefab 在 Awake 里按表预热（`_spawnPrefabs`），不留一次磁盘 IO 到"上一波最后一个人倒下"那一拍。
+
+**验证**：EditMode 67/67 全绿（第20区四条：表里每只都取得到预制体**且挂了 CombatStats**、上一波还剩一个人就不许开下一波 / 清完之后第一拍只排期、隔满 45 拍那一拍才开、最后一波清完报 `LevelCleared` 且之后一个都不许多开、按表生成一个人要走完"认盒子 + 只拿自己那份子集 + 按表里坐标站好 + 能被打死"）。批处理 Play 探针跑真实场景：波次表把第一波两个人生成在 `x=12.50 / z=0.00` 与 `z=0.90`（表里逐字），随后跟玩家的横向差稳定在 0.9~1.2 米、**车道逐拍对齐**，探针打死其中一个后打印从 `波次=1/2` 变成 `1/1` 而**没有提前开第二波**。
+
+**遗留（已单独登记）**：`Doc/issue/enemy-spawn-thinks-in-ai-beat.md`——换波附近的 `EnemyThink max=2592` 与另一窗口里几处零散非零分区，一次性头部扩容与"探针在同一渲染帧打印被算进分区"两种解释还没分开；因此本期不写"波次之后仍然全部分区 0 B"这句话。
+
+**这一片没做的（原 2.3 的后半）**：关卡边界推进相机（`LevelBounds.Current` 现在还是场景里那一个静态边界，不随波右移）、HUD 血量条与伤害飘字、过关/失败流程。它们与波次无关，各自成一片。
 
 ### 顺带：恢复闸门
 

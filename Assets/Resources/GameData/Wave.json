@@ -1,0 +1,35 @@
+{
+    "data": [
+        {
+            "id": "Level1",
+            "说明": [
+                "第一关的波次表。一波就是「这一批敌兵」，全灭之后隔 framesBetweenWavesFrames 拍开下一波",
+                "x / z 是出生点的世界坐标（z 是纵深车道，负数靠镜头）：源工程把这些人在场景里预摆好，本工程改成运行期按表生成，为的是以后加一关只动这一份文件而不动 .unity",
+                "prefab 用名字取（Resources 底下），与源工程 Resources.Load(effectName) 同一个习惯；敌兵的精灵美术还没导进来，所以先都填 Player（demo 那只灰盒），Step 2 后面换成精灵敌兵只改这一列"
+            ],
+            "framesBetweenWavesFrames": 45,
+            "waves": [
+                {
+                    "enemies": [
+                        { "prefab": "Player", "x": 12.5, "z": 0.0 },
+                        { "prefab": "Player", "x": 12.5, "z": 0.9 }
+                    ]
+                },
+                {
+                    "enemies": [
+                        { "prefab": "Player", "x": 13.5, "z": -0.9 },
+                        { "prefab": "Player", "x": 13.5, "z": 0.0 },
+                        { "prefab": "Player", "x": 15.5, "z": 0.9 }
+                    ]
+                },
+                {
+                    "enemies": [
+                        { "prefab": "Player", "x": 14.5, "z": 0.0 },
+                        { "prefab": "Player", "x": 14.5, "z": 1.2 },
+                        { "prefab": "Player", "x": 16.5, "z": -1.2 }
+                    ]
+                }
+            ]
+        }
+    ]
+}

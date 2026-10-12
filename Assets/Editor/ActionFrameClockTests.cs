@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十四件事：
+/// 钉的十五件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -57,6 +57,10 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    只按纵深键、决定出手之后隔满 `telegraphFrames` 拍才把键按下去、场上攻击中的人达到配额就不许再上、
 ///    玩家死了整族停摆、他自己挨着打的那几拍既不思考也不走位。
 ///    【AI 只登记按键，不写位移】：出不出招仍然由表说了算，所以这一区断言的是"按了什么"。
+/// 15. 波次表与关卡推进（BeatEmUp 移植切片 2.3）：表里每一只都取得到预制体**而且挂了 CombatStats**
+///    （没挂就是死局：他不会死，这一波永远清不完）、上一波还剩一个人就不许开下一波、清完之后隔满
+///    `framesBetweenWavesFrames` 那一拍才开、最后一波清完报 LevelCleared 且之后再也不多发一个人、
+///    按表生成一个人要走完"认盒子 + 只拿自己那份子集 + 按表里的坐标（含纵深）站好"这三步。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -105,6 +109,10 @@ public class ActionFrameClockTests
         if (_groundRig != null) Object.DestroyImmediate(_groundRig);
         if (_poiseRig != null) Object.DestroyImmediate(_poiseRig);
         if (_receiverGo != null) Object.DestroyImmediate(_receiverGo);
+        for (int i = 0; i < _waveRigs.Count; i++) if (_waveRigs[i] != null) Object.DestroyImmediate(_waveRigs[i]);
+        _waveRigs.Clear();
+        _waveUnits.Clear();
+        _spawnCalls = 0;
         Object.DestroyImmediate(_rig);
     }
 
@@ -2644,5 +2652,151 @@ public class ActionFrameClockTests
 
         Assert.AreEqual("HurtFromForward", m.self.action.CurrentAction.id,
             "挨着打的那几拍不思考也不走位：他的动作由受击行自己带回去，AI 不许插手");
+    }
+
+    //================================ 第20区：波次表与关卡推进（切片 2.3） ====================================
+    //波次这一整套是"从表里生成人"，所以它必须能在没有场景的情况下被钉住：
+    //`WaveManager.spawn` 是一个委托，测试塞假的进来就能只问"第几波什么时候开、一共开几个"，
+    //而"生成一个人到底要几步"交给 `GameMain.PlaceCharacter` 那条真入口自己测
+
+    private readonly List<GameObject> _waveRigs = new List<GameObject>(8);
+    private readonly List<CharacterObj> _waveUnits = new List<CharacterObj>(8);
+    private int _spawnCalls;
+
+    /// <summary>假的生成器：打真入口 `GameMain.PlaceCharacter`，这样"能不能死"也是真的</summary>
+    private CharacterObj WaveSpawn(string prefabName, Vector3 at)
+    {
+        CharacterObj unit = GameMain.PlaceCharacter(
+            AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath), at, "TurnBack");
+        _waveRigs.Add(unit.gameObject);
+        _waveUnits.Add(unit);
+        _spawnCalls++;
+        return unit;
+    }
+
+    private void TickWave(WaveManager mgr, int frames)
+    {
+        for (int i = 0; i < frames; i++)
+        {
+            LogicClock.Advance();
+            mgr.Tick(LogicClock.Frame);
+        }
+    }
+
+    /// <summary>把已经生成的所有人都打死（测试里没有战斗，只能直接扣血）</summary>
+    private void KillAllSpawned()
+    {
+        for (int i = 0; i < _waveUnits.Count; i++)
+            if (_waveUnits[i] != null && !_waveUnits[i].IsDead) _waveUnits[i].Stats.TakeDamage(100000f);
+    }
+
+    /// <summary>
+    /// 表 vs 素材库的第二次一致性检查：波次表里的每一只都要取得到预制体，而且**必须挂 CombatStats**。
+    /// 少了后一半就会出一个查不出来的死局：那个人根本不会死，于是这一波永远清不完、关卡卡在第二波
+    /// </summary>
+    [Test]
+    public void EveryWaveRowResolvesToAPrefabThatCanDie()
+    {
+        WaveTable.Load();
+        Assert.Greater(WaveTable.Count, 0, "前提：Resources/GameData/Wave.json 读得出关卡");
+        LevelRow level = WaveTable.Get("Level1");
+        Assert.NotNull(level, "GameMain.firstLevelId 默认写的是 Level1");
+
+        for (int w = 0; w < level.waves.Length; w++)
+        {
+            SpawnRow[] rows = level.waves[w].enemies;
+            Assert.Greater(rows.Length, 0, "第 " + (w + 1) + " 波是空的");
+            for (int i = 0; i < rows.Length; i++)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/" + rows[i].prefab + ".prefab");
+                Assert.NotNull(prefab, rows[i].prefab + " 取不到预制体");
+                Assert.NotNull(prefab.GetComponent<CombatStats>(), rows[i].prefab + " 没挂 CombatStats，他不会死");
+            }
+        }
+    }
+
+    [Test]
+    public void NextWaveOpensOnlyAfterTheLastOneDiesAndTheGapIsUp()
+    {
+        WaveTable.Load();
+        LevelRow level = WaveTable.Get("Level1");
+        WaveManager mgr = new WaveManager();
+        mgr.spawn = WaveSpawn;
+        mgr.level = level;
+
+        mgr.StartFirstWave();
+        Assert.AreEqual(1, mgr.WaveIndex, "开波之后 WaveIndex 是已经开过的波数");
+        Assert.AreEqual(level.waves[0].enemies.Length, mgr.AliveInWave);
+        Assert.AreEqual(_spawnCalls, mgr.AliveInWave);
+
+        //只打死第一波里的一只：剩下的人还站着，就不该有下一波
+        _waveUnits[0].Stats.TakeDamage(100000f);
+        Assert.AreEqual(1, mgr.AliveInWave, "同波还剩一个人，场上就该还有一个");
+        TickWave(mgr, 200);
+        Assert.AreEqual(level.waves[0].enemies.Length, _spawnCalls, "没清完就不许开下一波");
+
+        KillAllSpawned();
+        int gap = level.framesBetweenWavesFrames;
+        //gap 而不是 gap-1：清完之后的第一拍只用来"排期"，那不算在间隔里
+        TickWave(mgr, gap);
+        Assert.AreEqual(level.waves[0].enemies.Length, _spawnCalls, "间隔没走完就不开：这是给玩家喘的那口气");
+
+        TickWave(mgr, 1);
+        Assert.AreEqual(level.waves[0].enemies.Length + level.waves[1].enemies.Length, _spawnCalls,
+            "清完之后隔满 framesBetweenWavesFrames 的那一拍开出第二波");
+        Assert.AreEqual(2, mgr.WaveIndex);
+        Assert.IsFalse(mgr.LevelCleared);
+    }
+
+    [Test]
+    public void LevelClearsAfterTheLastWaveAndNeverSpawnsBeyondTheTable()
+    {
+        WaveTable.Load();
+        LevelRow level = WaveTable.Get("Level1");
+        WaveManager mgr = new WaveManager();
+        mgr.spawn = WaveSpawn;
+        mgr.level = level;
+        int total = 0;
+        for (int w = 0; w < level.waves.Length; w++) total += level.waves[w].enemies.Length;
+
+        mgr.StartFirstWave();
+        for (int guard = 0; guard < 20 && !mgr.LevelCleared; guard++)
+        {
+            KillAllSpawned();
+            TickWave(mgr, level.framesBetweenWavesFrames + 2);
+        }
+
+        Assert.IsTrue(mgr.LevelCleared, "最后一波也清完，就该报「这一关过了」");
+        Assert.AreEqual(total, _spawnCalls, "一共只生成表里写的那几个人，之后一个都不许多开");
+        Assert.AreEqual(level.waves.Length, mgr.WaveIndex);
+
+        //推完之后再来一百拍也不该多发一个人
+        TickWave(mgr, 100);
+        Assert.AreEqual(total, _spawnCalls);
+    }
+
+    /// <summary>
+    /// 生成一个人到底做了几步：认盒子、拿到**他自己那一份**动作子集、能被打死。
+    /// 这一步少了任何一条，表现就是"场上多了一个不会动的假人"或者"他的招式跟玩家串了"
+    /// </summary>
+    [Test]
+    public void PlaceCharacterBindsBoxesAndGivesHisOwnFamily()
+    {
+        CharacterObj unit = GameMain.PlaceCharacter(
+            AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath), new Vector3(12.5f, 0f, 0.9f), "TurnBack");
+        _waveRigs.Add(unit.gameObject);
+
+        Assert.NotNull(unit.BeHitBoxes, "判定盒没认到：采样拍查不到他");
+        Assert.Greater(unit.BeHitBoxes.Length, 0);
+        Assert.AreEqual(unit.actionSubset.Length, unit.action.AllActions.Count,
+            "他只会 actionSubset 里那几招，不许把全表都端上来（切片 1.7 的那条规矩）");
+        //prefab 上填了 defaultActionId 就优先用它，没填才轮到调用方给的兜底（切片 1.7 那条规矩）
+        string expectedStart = string.IsNullOrEmpty(unit.defaultActionId) ? "TurnBack" : unit.defaultActionId;
+        Assert.AreEqual(expectedStart, unit.action.CurrentAction.id, "开场动作要按 defaultActionId 的优先级来");
+        Assert.AreEqual(new Vector3(12.5f, 0f, 0.9f), unit.transform.position,
+            "出生坐标要按表里的来——z 是纵深车道，写 0 就等于所有人都挤在同一条线上");
+        Assert.NotNull(unit.Stats, "带着 CombatStats 才能被打死，波次才推得动");
+        Assert.IsTrue(unit.Stats.TakeDamage(100000f), "一记就打死要返回致死，路由才会走 Death");
+        Assert.IsTrue(unit.IsDead);
     }
 }

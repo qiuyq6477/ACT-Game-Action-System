@@ -35,6 +35,7 @@ public static class GcProbe
         DamageSettle,
         PoolTick,
         EnemyThink,
+        EnemyCount,
         Count
     }
 
@@ -52,7 +53,7 @@ public static class GcProbe
     private static readonly long[] _total = new long[(int)Region.Count];
     private static readonly long[] _max = new long[(int)Region.Count];
     private static readonly int[] _calls = new int[(int)Region.Count];
-    private static int _lastReportFrame = -1;
+    private static long _lastReportFrame = -1;
 
     private static ProfilerRecorder _gcAllocInFrame;
     private static bool _recorderTried;
@@ -97,7 +98,9 @@ public static class GcProbe
         //只在最外层分区收尾时汇总：CalculateBoxInfo 等内层分区包在 ActionControllerUpdate 里，
         //换别的分区触发的话，打印的分配会被算进还没收尾的外层区间
         if (region != Region.ActionControllerUpdate) return;
-        int frame = Time.frameCount;
+        //按**逻辑帧**而不是渲染帧开窗：一个窗口就是 300 拍 = 5 秒，不管渲染帧率多高都一样。
+        //按渲染帧开的话，-nographics 下一台机器一个窗口只有几拍，稳态与非稳态混在一起看不出来
+        long frame = LogicClock.Frame;
         if (frame % ReportEveryFrames != 0 || frame == _lastReportFrame) return;
         _lastReportFrame = frame;
         Report();
