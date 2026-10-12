@@ -1,6 +1,6 @@
 # BeatEmUp 移植方案：用 ACT 框架重实现清版动作
 
-> 状态：实施中（Step 1 已完成 1.1–1.8，剩 1.9 与 Step 2） · 2026-10
+> 状态：实施中（Step 1 全部完成 1.1–1.9 · 2026-10；剩 Step 2 世界与流程）
 
 这份方案解决的是一个问题：**怎么把 `/Users/zlqiu/Documents/GitHub/BeatEmUp` 那套能玩的清版动作玩法，搬到本工程的动作框架上重做**——素材与玩法内容来自 BeatEmUp，动作系统、时基、判定、性能红线全部用本工程的。两边框架不兼容的地方，按本工程的规矩给本工程加功能，而不是把 BeatEmUp 的实现搬过来将就。
 
@@ -112,7 +112,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.6 ✅ | 派生门禁（C）+ 长按 Block（E）+ 种子化随机 `Dice` + 场上角色注册表 | 六条新用例：站着能接的地面招在半空接不出来；追击条件既查距离（x/z 两根轴）也查对方此刻的动作；Block 每拍登记所以按住期间每拍重新授予、松手后按回看窗口留两拍尾巴；换动作清历史时 Block 留下而 Punch 被清掉；随机数只由种子与抽样次数决定（换帧率分法/换种子/退化点/取值范围）；函数名写错按不成立处理。32/32 全绿，稳态十一个分区 0 B |
 | 1.7 ✅ | 玩家整套招式表（21 行，帧数据全部来自 1.4 的工具）+ 跳跃/落地（`jumpUpSpeed`/`landActionId`）+ HD-2D 呈现（精灵玩家 prefab、由表生成的平铺控制器、相机标定、只跟横向） | 36/36 全绿；30 与 120 两档下滞空拍数与最高点逐字一致；`PlayerPunch1` 端到端打到人（盒子当拍摆到表里的位置与尺寸）；稳态十一个分区 0 B。偏离与顺延见第八节 |
 | 1.8 ✅ | 抓取约束 + 投掷（D）：`holdFrames/holdOffset`、`keepHold`、`ApplyHolds` 一拍、`Arc` 抛物线、门禁 `HoldingUnit`、E 键 | 七条新用例：被举者**逐拍**跟随（摆一次的实现第一拍就红）、x 随正反手镜像而 z 不动、抓取系内部换动作不解约束而挨一记就解、`holdFrames` 走完撒手、投掷解约束后按 Arc 飞出去并落回地面、`Arc` 两头同高、投掷那记合成盒罩得住手里的人（数据耦合的闸门）。43/43 全绿；Play Mode 端到端按 E 举起（被举者落在玩家 + `holdOffset` 处）→ 再按 E 转身摔出 2.50 米、滞空读到 1.15 米、最后贴回地面；稳态十二个分区 0 B。偏离与顺延见第八节 |
-| 1.9 | 伤害/HP/霸体/格挡结算（= refactor.md Phase 3）+ 命中路径的分配 | 用例：霸体未破→掉血但不切 Hurt；`hp<=0`→Death；格挡免伤但有 blockstun 与推开；`Doc/issue/hit-event-heap-alloc.md` 结掉 |
+| 1.9 ✅ | 伤害/HP/霸体/格挡结算（= refactor.md Phase 3）+ 命中路径的分配 | 第 17 区八条用例（公式四乘数一个不少并夹 0、霸体硬抗只掉血、崩防那一记才切受击、正面格挡免伤但罚拍并推开、背后挡不住、致死路由 Death 且死人不再被选中、没装组件行为与 1.9 之前一字不差、韧性隔满恢复期才一拍一点回）；**51/51 全绿**。批处理 Play 探针（真场景 803 逻辑帧）：敌兵 60→53→46（每记正好 7 = 10 攻 × 1.0 × 1 × 1 − 3 防）、韧性 20→12→4、那两记都没切受击动作 = 霸体硬抗成立；`DamageSettle avg=0 max=0` 结算零分配 |
 
 ### Step 2：世界与流程
 
@@ -276,6 +276,29 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 **验证**：编辑期用例 **43/43 全绿**（第 16 区七条：逐拍跟随、镜像 x 不镜像 z、抓取系不解而受击即解、`holdFrames` 走完撒手、投掷解约束之后按 Arc 飞出去并落回地面、`Arc` 曲线两头同高而最高点是表里那个 y、合成盒罩得住被举者）。Play Mode 端到端（`AddInput(KeyMap.Grab)` 进逻辑层）：按 E 出 `PlayerGrab` → 第 6 拍打到敌兵 → 敌兵切 `Grabbed` 并被摆到 `(6.93, 0.60, 0)`，正是玩家 `(6.00, 0, 0)` + `holdOffset`；再按 E 出 `PlayerThrow` 并转到反手，敌兵被摔到 `-x` 方向，横向总位移 **2.50 米**（表里 2.5）、中途读到过 `y=1.15` 的滞空位置、最后贴回地面 `y=0`；`HeldBy` 在投掷之后恒为 null。稳态十二个分区（新增 `HoldApply`）`avg=0 max=0`；出招的那几拍读到过非零（`BoxPose avg=2 max=300`），来源就是上面第 ② 条 PhysX 警告，不是约束本身。
 
 **偏离与顺延**：源工程的 `hitOtherEnemiesWhenThrown`（飞出去的身体当武器砸别人）没做——那要在被摔的那一行动作上挂攻击盒，跟 1.9 的伤害结算与 Step 2 的敌兵招式一起做。另一处行为差异：被举着的人如果第三方打中他，他会立刻撒手落地（约束第一条规则的自然结果），源工程则是举着的人挨打也不掉。
+
+### 切片 1.9 伤害 / HP / 霸体 / 格挡结算 · 已实施 · 2026-10
+
+**这一片没有新增玩法，新增的是"打中之后的结论"**：源工程只有一句 `SubstractHealth(attackData.damage)`（血量 10、伤害是个绝对值、没有防御、没有韧性、格挡是全额免伤且挡完立刻能动）。这一片把它换成本工程的规矩：伤害由四个早就存在却没人消费的数乘出来，打断与否由一条韧性条决定，格挡要有代价，而这一切在没装组件的角色身上必须等于老行为。框架为此新增 `Character/Fight/` 三件套（`CombatStats`、`PoiseGauge`、`DamagePayload`）加 `CombatPipeline`，表上加三个攻击字段（`poiseDamage`、`blockStunFrames`、`blockPush`）和一个受击阶段字段（`block`），`CharacterObj` 上加 `Stats`/`Poise`/`IsDead`/`FacesToward`/`CanHitTargetAgain`。
+
+- **整段结算从 `GameMain.DoAttack` 搬进 `CombatPipeline.ResolveHit`**：不是为了分类好看，是因为第16区一直在手抄 `DoAttack` 的行来结算（"DoAttack 是私有的"这件事写在用例注释里当理由）。搬成静态入口之后 `ApplyHit` 只剩一行调用，抄漏一行就测不到那一行的风险消失了，而 1.9 这几条新规则（挡住不切动作、打空血路由 Death）本来就只能靠打真入口才钉得住。
+- **伤害公式**：`攻击方 CombatStats.attack × 表里 attack × 攻击盒 damageRate × 受击盒 meat − 受击方 defense`，减完夹在 0。夹 0 之后不打断、不掉血但硬直照给——"这一拳打不动"是数值问题，框架不替策划猜一个"至少 1 点"。`damageRate` 与 `meat` 这两个字段从项目第一天就躺在盒子上，一直到这一片才有读者。
+- **缺省一律站在老行为那一边**，三处：没挂 `CombatStats`（或 `maxHp` 留 0）就一滴血不掉，而打断/硬直/击退与 1.9 之前一字不差；`PoiseGauge.maxPoise` 留 0 算"没有霸体"；攻击那行 `poiseDamage` 留 0 也算"这一记一律打断"。最后一条是刻意反直觉的——按字面读"不削韧"该等于"打不断"，但漏填一个字段就得到"谁都打不动他"是查不出来的坑，所以 `Consume(0)` 直接返回"打空了"并且一点韧性都不扣。
+- **格挡的开关做在受击阶段上**（`BeHitBoxTurnOnInfo.block`）而不是动作上：这一条本来就在回答"这一部分防御是什么防御"，而"盾牌挨揍和屁股挨揍效果完全不同"这句话早就写在那个结构的注释里，只是没人给它消费者。挡住之后不换动作、只 `ApplyHitStop(blockStunFrames)`——防御姿势冻在原地震几拍，就是格挡硬直在这套框架里的全部实现，不需要新动作行。推开走 `blockPush`（`MoveInfo`，留 `inFrames 0` 就是不动，tween 那边直接返回零向量所以不会除零）。
+- **"打在背后不算挡住"由几何判**（`CharacterObj.FacesToward`，只看横向，因为面向本来就只有两向），不查表里的 `forceDir`：`forceDir` 是"这一记设计上算从哪打"，而能不能挡住取决于两人此刻站哪。横向正好重叠（差 0）算在正脸——宁可放过挨刀那一下，也不要"明明对着站却挡不住"。
+- **致死那一记按 catalog `Death` 路由**，而不是往每条攻击行上再挂一个"死亡动作变化"：四十行各抄一份同样的字段等于把同一件事写四十遍，而"哪一行才是这个人的死亡"仍然由 `ChangeByCatalog` 在他自己那份子集里挑（移植家是 `PlayerDeath`，demo 家压根没有 Death 行，于是那边预约为空、什么也不发生）。`PlayerDeath` 那行 1.7 就配好了（`autoNextActionId` 指向自己、`defensePhase` 整个留空），这一片只是终于有了走到它那里的路。
+- **撞出来的第 1.7 期潜在缺陷**：`PickActionMethod` 的 `Hurt`/`Beaten` 两支函数按 id 认正反手（`HurtFromForward`…），认不出就返回一个**空 `ActionInfo`**，于是 `picked.id` 是 null、预约指向一个不存在的动作。移植家的受击只有 `PlayerHit` 一行、方向无从区分，结果就是**精灵玩家被敌兵打中会站在原地一动不动**，而 Console 里一点痕迹都没有。改成落到 `candidates[0]`，并由 `BlowFromBehindIsNotBlockedAndStillSwitchesToTheHurtRow` 钉住。
+- **顺手关掉 `Doc/issue/hit-event-heap-alloc.md` 的前两条**：`ForceMove` 与 `HitRecord` 都改成 struct（列表容量在角色构造时一次给足），所以"每记命中 new 一个击退 + 一条记录"这两笔分配没了。代价是"`List<struct>` 里改元素改的是拷贝"这个编译器不报错的坑，于是倒数全部走"取出来 → 改 → 写回去"，而 `GetHitRecord(…) == null` 那种用 null 表示查不到的接口不成立，换成布尔问题 `CanHitTargetAgain`。第三条（Animator 内部那几千字节）按建议只做了"先量准"：`GcProbe` 加了 `ChangeAction` 与 `DamageSettle` 两个分区，复验时如果 `ChangeAction` 非零而 `DamageSettle` 是 0，剩下的就归引擎，另开一条。
+- **死人不再挨第二下**：`CanAttackTargetNow` 在开头看到 `target.IsDead` 就直接收工。少了这一条，一记多段的大招会在好几拍里反复结算同一个人，而每一记都会重新路由一次 Death、重新预约一次受击动作——断气之后又站起来挥一下手。
+- **表数据**：19 条攻击行加了新字段（移植家十条给 `poiseDamage` 8~30 加 `blockStunFrames` 6~8，抓取系与投掷只给削韧，demo 那五条拳击行给 `blockStunFrames`/`blockPush`，因为它们是"玩家能格挡住的那一侧"），`PlayerDefend` 的受击阶段挂上 `block: true`。削韧的刻度是按"20 点韧性挨两拳、第三拳崩"标的，等 prefab 上的 `maxPoise` 定了再回头调。
+
+**闸门本身换了跑法**：主编辑器还卡在播放模式里（`run_tests` 排在播放模式后面不返回、Pipeline 队列整个堵住），于是这一片改用**批处理编辑器跑副本**：`rsync` 一份工程（排除 `Library`/`Temp`/`Logs`/`UserSettings`/`.git`）到 `~/.cache/act-verify/proj`，然后 `Unity -batchMode -nographics -projectPath <副本> -runTests -testPlatform EditMode -testResults <xml>`，约一分钟出结果，跑的是真编辑器、真物理查询、真 Animator。Play Mode 那一半同一条路：`-executeMethod` 进播放模式、在 `EditorApplication.update` 里数帧、用 `AddInput` 打真攻击、把 `Application.logMessageReceived` 收到的 GcProbe 报告写进文件。两条命令都记进了 `Assets/Scripts/AGENTS.md`。
+
+**验证**：编辑期用例新增第 17 区八条（公式四乘数一个不少且夹 0、霸体硬抗只掉血、崩防那一记才切受击、正面格挡免伤但罚六拍并推开 0.4 米、背后那一记挡不住且照常切受击行、致死路由 Death 而死人不再被选中、没装组件行为与 1.9 之前一字不差、韧性只在隔满恢复期之后一拍一点地回），**51/51 全绿**。批处理 Play 探针跑真场景（`GameMain.unity`：BeatEmUpPlayer + Enemy1 + Enemy2，运行时挂上 `CombatStats`：玩家 100/10/3、敌兵 60/20/3 与 20 点霸体）：一记 `PlayerPunch1` 之后 **Enemy1 hp 60 → 53 → 46**（每记正好 7 = 10 攻 × 表里 1.0 × 盒倍率 1 × 肉质 1 − 3 防）、**韧性 20 → 12 → 4**（每记削 8），而这两记都**没有**切受击动作（还是 `TurnBack`/`BoxingStand`）——霸体硬抗在真场景里成立；`DamageSettle avg=0 max=0 n=2`、`ChangeByCatalog avg=0 max=0`，十四个分区里除了含换动作那一拍的 `ActionControllerUpdate avg=25 max=3606`（引擎内部成本，正是新加的 `ChangeAction` 分区要分开量的那一笔）以外全是 0。
+
+**闸门抓到的两个真问题**（都不是"用例写错了"）：① **`blockPush` 的曲线名写成了 `GoStraight`，而那张表里根本没有这一条**——`ForceMoveMethod` 只有 `Slowly` 与 `Arc`，`GoStraight` 在**另一张**撞名的表 `RootMotionMethod` 里，于是格挡推开会静默变成"一动不动"。改成了 `Slowly`，并补了一条开机检查：`GameData.Load` 现在会对每一记攻击的 `pushPower`/`blockPush` 调 `ForceMoveMethod.Validate`，认不出名字就喊（以前 `MoveInfo.tweenMethod` 的注释写着"没有这个函数就按匀速来"，而实现是落到 `NoMove` = 不动，注释与实现相反正是这类错能藏住的原因）。② **`defensePhase.tempBeCancelledTagTurnOn` 可以是 null**：`BeHitBoxTurnOnInfo` 是结构体，而"这一记打在一个没有对应受击阶段的盒子上"是正常路径，那时候 `CanAttackTargetNow` 给回的就是一个默认值。结算整段搬进 `ResolveHit` 之后第16区的用例第一次踩到它（旧的复刻版没有那两圈 `foreach`，所以这个洞一直存在），已经补上 null 判断。
+
+**偏离与顺延**：伤害飘字与受击白闪没做——它们和 1.5/1.7 顺延的池化 cue 接收者是同一个消费者，归 Step 2 的 `EntityManager`。韧性条 UI、以及"敌兵也有霸体（重甲兵）"要等 Step 2 的敌兵招式表。`hitOtherEnemiesWhenThrown` 仍按 1.8 的登记顺延。
 
 ### 顺带：恢复闸门
 

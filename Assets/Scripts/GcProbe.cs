@@ -31,6 +31,8 @@ public static class GcProbe
         SampleOverlaps,
         LaneSeparate,
         HoldApply,
+        ChangeAction,
+        DamageSettle,
         Count
     }
 

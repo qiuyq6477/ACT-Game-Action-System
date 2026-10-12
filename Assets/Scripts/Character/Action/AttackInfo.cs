@@ -26,6 +26,13 @@ public struct AttackInfo
     public ForceDirection forceDir;
 
     /// <summary>
+    /// 削韧点数（PoiseGauge 掉多少）。
+    /// 【0（默认）= 这一记不削韧，也就一律照常打断】：漏填必须站在老行为那一边，
+    /// 否则"谁都打不动他"这种坑要在战斗中间才看得出来
+    /// </summary>
+    public float poiseDamage;
+
+    /// <summary>
     /// 推动力，目标会收到这个力的影响
     /// 这是一个ForceMove，不受标准移动力影响
     /// </summary>
@@ -35,6 +42,19 @@ public struct AttackInfo
     /// 目标的硬直帧数（逻辑帧）
     /// </summary>
     public int hitStunFrames;
+
+    /// <summary>
+    /// 目标把这一记格挡住时的硬直帧数（逻辑帧）。
+    /// 【源工程没有这个东西】：BeatEmUp 的格挡是全额免伤、挡完立刻能动，所以挡刀毫无代价。
+    /// 这里给的是"挡住也要罚一拍"的口子：0 就退回源工程那种白挡
+    /// </summary>
+    public int blockStunFrames;
+
+    /// <summary>
+    /// 目标把这一记格挡住时被推开多少（与 pushPower 同一种数据，只是给挡住的那种情况）。
+    /// 【留 MoveInfo.Zero = 挡刀不产生位移】：inFrames 为 0 时 tween 那边直接返回零向量，不会除零
+    /// </summary>
+    public MoveInfo blockPush;
 
     /// <summary>
     /// 攻击者自身的卡帧帧数（逻辑帧）

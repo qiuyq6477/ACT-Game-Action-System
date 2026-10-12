@@ -1,6 +1,6 @@
 # 命中那一拍有堆分配（击退、命中记录、换动作）
 
-> 状态：未处理 · 2026-10
+> 状态：已实施待复验 · 2026-10（切片 1.9 改完代码，Play Mode 的 GcProbe 还没重量——编辑器卡在播放模式，见 `Doc/plan/beatemup-port.md` 第八节）
 
 解决的问题：Phase 1 把逻辑热路径压到了每帧 0 Byte，但"打中人了"这一拍走的是另一条路径，
 它从来没被测到过——因为判定盒错频时窄窗口经常静默打空。切片 1.3 把命中改成按逻辑帧主动采样之后，
@@ -47,3 +47,18 @@ Phase 3 / `Doc/plan/beatemup-port.md` 的切片 1.9 本来就要重做伤害结�
 
 登记人：切片 1.3（命中按逻辑帧采样）验证时，Play Mode 的 GcProbe 报出来的。与当次任务无关，
 按 `AGENTS.md` 的规则单独登记，不阻塞进度。
+
+## 切片 1.9 做了什么（待复验）
+
+三条建议全部落地，其中两条按建议做，第三条按"先量准再说"做：
+
+1. `ForceMove` 已经是 struct，直接躺在 `CharacterObj._forceMove` 这一个字段里，`Advance()` 改的就是它本身。
+   `MoveTween` 也没有"每对象一个委托"了：`FromData` 从 `ForceMoveMethod.Methods` 取函数表里的常量委托，
+   认不出来时取 `ForceMoveMethod.NoMove`（不捕获变量，编译期缓存，不分配）。
+2. `HitRecord` 没有走对象池，直接改成 struct：列表在 `CharacterObj` 构造时给 8 的容量，
+   `Add` 与改值都不分配。代价是"结构体在 `List` 里改的是拷贝"这个坑，
+   所以倒数一律走"取出来 → 改 → 写回去"（`CharacterObj.Tick` 与 `AddHitRecord`），
+   而 `GetHitRecord(…) == null` 那种"用 null 表示查不到"的接口不成立了，换成布尔问题 `CanHitTargetAgain`。
+3. `GcProbe` 加了 `ChangeAction` 与 `DamageSettle` 两个分区，把"Animator 换状态给的"和"我们写的"分开算。
+   复验要看的就是这一对：如果 `ChangeAction` 仍然报几千字节而 `DamageSettle` 是 0，
+   那剩下的分配归引擎，要另开一条（要么池化 Animator、要么接受它），不该再来追这一条。

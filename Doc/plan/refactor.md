@@ -1,6 +1,6 @@
 # ACT 动作系统十项妥协工业级重构规划方案
 
-> 状态：Phase 1、2 已实施 · 2026-10（Phase 3~4 仍为规划中）
+> 状态：Phase 1、2、3 已实施 · 2026-10（Phase 4 仍为规划中；Phase 3 的妥协 10 记为偏离顺延 Step 2）
 >
 > Phase 3（伤害/霸体/粗筛）与 Phase 4（实体与对象池）随 [BeatEmUp 移植方案](beatemup-port.md) 落地。该方案同时引入"纵深车道"这条新轴——它不在下面十项妥协之内，是移植带来的新增项。
 
@@ -173,6 +173,12 @@ Unity 2023.2.0f1 编辑器播放 `Assets/Scenes/GameMain.unity`（玩家 + 2 个
 
 本阶段目标：让战斗系统具备商用级 ACT 的打击反馈、多段判定去重与属性计算。
 
+> 落地情况（切片 1.9）：妥协 5 按本节实现，但**结算不在 `GameMain` 里**——`DoAttack` 整段搬进了新的静态入口
+> `Assets/Scripts/Character/Fight/CombatPipeline.cs`，因为编辑态用例要能不打 GameMain 就打到真结算。
+> 击退矢量与卡肉帧数没有进 `DamagePayload`（它们本来就在 `AttackInfo.pushPower`/`freezeFrames` 上，
+> payload 只带"这一记该给哪一份"的结论）。妥协 10（阵营分层 + 距离²粗筛）没在本期做，
+> 记为偏离顺延 Step 2，理由见 [beatemup-port.md](beatemup-port.md) 第八节的 1.3 与 1.9 两段。
+
 #### 8. 妥协 5：战斗伤害数值与霸体/防御结算 (`GameMain.cs` & `CombatPipeline`)
 * **现状**：`//todo demo 里就先不做了`，仅有判定盒相交，无数值与硬直结算。
 * **重构方案**：
@@ -209,5 +215,5 @@ Unity 2023.2.0f1 编辑器播放 `Assets/Scenes/GameMain.unity`（玩家 + 2 个
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | 治理妥协 6、7、8、9（0 GC 热点优化）· **已实施** | `RootMotionMethod.cs`<br>`CharacterObj.cs`<br>`ActionController.cs`<br>`GameData.cs`<br>`InputToCommand.cs`<br>`Boxes/BoxTagRegistry.cs` | 用 `Assets/Scripts/GcProbe.cs` 的分区探针看：动作推进、判定盒计算、按分类选动作、命中判定、移动意图、输入刷新这 6 个分区 **max = 0 B/帧**。判据是分区归零而不是整帧归零——调试用的输入面板仍在每帧拼字符串（`Doc/issue/ui-inputtext-per-frame-alloc.md`）。Unity 2023.2 已经没有 `Profiler.GetAllocatedBytesForCurrentThread`，而 `Profiler.GetMonoUsedSizeLong()` 在编辑器里一帧之内不动（用它做差值会恒 0），所以探针取 `ProfilerRecorder` 的 `GC Allocated In Frame` 计数器，详见 `Doc/bugfix/gc-probe-false-zero.md`。 |
 | **Phase 2** | 治理妥协 1、2、4（时基、物理、地形）· **已实施** | `LogicClock.cs`<br>`GameMain.cs`<br>`ActionController.cs`<br>`CharacterObj.cs`<br>`Action/FrameRange.cs` 等表结构<br>`GameData/Action.json`<br>`Assets/Editor/`（校对菜单 + EditMode 用例） | 见上文的 Phase 2 实施记录。判据不靠肉眼：`Assets/Editor/ActionFrameClockTests.cs` 九个 EditMode 用例钉住"第几帧判到、第几帧接得上、顿挫保持、三档渲染帧率各产出 60 个逻辑帧"；滞空轨迹用 Punch2 的击退（工程里没有跳跃）在 `GameMain.targetFrameRate` 30/60/120 三档下人工复核一次。 |
-| **Phase 3** | 治理妥协 5、10（伤害、霸体、碰撞加速） | `GameMain.cs`<br>`CharacterObj.cs` | 攻击敌人时出现伤害飘字、韧性打崩击退、以及霸体霸体硬抗动作反馈。 |
+| **Phase 3** | 治理妥协 5、10（伤害、霸体、碰撞加速）· **妥协 5 已实施（切片 1.9，51/51 全绿 + 批处理 Play 探针量过）**；妥协 10 的阵营掩码与距离²粗筛记为偏离、顺延到 Step 2 | `CombatPipeline.cs`（新增，`GameMain.DoAttack` 整段搬进这里）<br>`Fight/CombatStats.cs`、`Fight/PoiseGauge.cs`、`Fight/DamagePayload.cs`（新增）<br>`CharacterObj.cs`<br>`Action.json`（`poiseDamage`/`blockStunFrames`/`blockPush`/`block`） | 韧性打崩才切受击、正面格挡免伤但罚拍并推开、打空血路由 Death、没挂组件的角色行为与之前一字不差（七条 EditMode 用例钉住，见 `beatemup-port.md` 第八节 1.9）。**伤害飘字还没做**：它和 1.5/1.7 顺延的池化 cue 接收者是同一个消费者，归 Step 2 的 `EntityManager`。 |
 | **Phase 4** | 治理妥协 3（实体管理与对象池） | `GameMain.cs`<br>`EntityManager.cs` | 场景可动态生成并回收 20+ 个怪物，帧率平稳不卡顿。 |

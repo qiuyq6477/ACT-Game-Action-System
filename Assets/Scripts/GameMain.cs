@@ -185,106 +185,22 @@ public class GameMain : MonoBehaviour
             if (player.CanAttackTargetNow(ene, out AttackInfo pAttackPhase, out BeHitBoxTurnOnInfo eDefenseInfo,
                     out AttackHitBox pAttackBox, out BeHitBox eneBox)) 
             {
-                //先判断，如果hitRecord表示没法命中，那么这个框的信息无效
-                HitRecord hRec = player.GetHitRecord(ene, pAttackPhase.phase);
-                if (hRec == null || (hRec.CooldownFrames <= 0 && hRec.CanHitTimes > 0))
+                //先判断，如果命中记录表示没法命中，那么这个框的信息无效
+                if (player.CanHitTargetAgain(ene, pAttackPhase.phase))
                 {
-                    DoAttack(player, ene, pAttackPhase, eDefenseInfo);
+                    CombatPipeline.ResolveHit(player, ene, in pAttackPhase, in eDefenseInfo, pAttackBox, eneBox);
                 }
             }
             //敌人对玩家
             if (ene.CanAttackTargetNow(player, out AttackInfo eAttackPhase, out BeHitBoxTurnOnInfo pDefenseInfo,
                     out AttackHitBox eAttackBox, out BeHitBox playerBox)) 
             {
-                //先判断，如果hitRecord表示没法命中，那么这个框的信息无效
-                HitRecord hRec = ene.GetHitRecord(player, eAttackPhase.phase);
-                if (hRec == null || (hRec.CooldownFrames <= 0 && hRec.CanHitTimes > 0))
+                //先判断，如果命中记录表示没法命中，那么这个框的信息无效
+                if (ene.CanHitTargetAgain(player, eAttackPhase.phase))
                 {
-                    DoAttack(ene, player, eAttackPhase, pDefenseInfo);
+                    CombatPipeline.ResolveHit(ene, player, in eAttackPhase, in pDefenseInfo, eAttackBox, playerBox);
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// 根据是否翻转获得方向
-    /// </summary>
-    /// <param name="dir"></param>
-    /// <param name="inversed"></param>
-    /// <returns></returns>
-    private static ForceDirection GetForceDirection(ForceDirection dir, bool inversed)
-    {
-        if (!inversed) return dir;
-        switch (dir)
-        {
-            case ForceDirection.Forward: return ForceDirection.Backward;
-            case ForceDirection.Backward: return ForceDirection.Forward;
-        }
-        return dir;
-    }
-    
-    /// <summary>
-    /// 发动攻击
-    /// </summary>
-    /// <param name="attacker"></param>
-    /// <param name="defender"></param>
-    /// <param name="attackInfo"></param>
-    /// <param name="defensePhase"></param>
-    private void DoAttack(CharacterObj attacker, CharacterObj defender, AttackInfo attackInfo, BeHitBoxTurnOnInfo defensePhase)
-    {
-        //动作改变，各自动作各自占优，所以>=和>的区别就在这里了
-        ActionChangeInfo attackerChange =
-            attackInfo.selfActionChange.priority >= defensePhase.attackerActionChange.priority
-                ? attackInfo.selfActionChange
-                : defensePhase.attackerActionChange;
-        ForceDirection attackerDir = GetForceDirection(attackInfo.forceDir, attacker.Inversed); 
-        attacker.action.PreorderActionByActionChangeInfo(attackerChange, attackerDir);
-        
-        ActionChangeInfo defenderChange =
-            attackInfo.targetActionChange.priority > defensePhase.selfActionChange.priority
-                ? attackInfo.targetActionChange
-                : defensePhase.selfActionChange;
-        //两人相向则翻转，否则不翻转
-        defender.action.PreorderActionByActionChangeInfo(defenderChange, attackerDir, attackInfo.hitStunFrames);
-        //硬直每记命中都要刷新，不能只挂在换动作上：受击方已经在Hurt里的时候，
-        //它自己的selfActionChange（Keep，优先级和攻击的targetActionChange相等）会赢下上面那个平手，
-        //于是预约是空的、ChangeAction不会发生、hitStunFrames就没人写了——连击的第二下变成零硬直。
-        //ApplyHitStop取较大者而不是叠加，所以重复命中只是把剩余硬重置满，不会越打越长。
-        defender.action.ApplyHitStop(attackInfo.hitStunFrames);
-        
-        //攻击方卡帧
-        attacker.action.SetFreezing(attackInfo.freezeFrames);
-        
-        //受击方位移（攻击方位移发生在动作本身了）
-        Vector3 moveDis = new Vector3(
-            attackInfo.pushPower.moveDistance.x * (attackerDir == ForceDirection.Forward ? 1 : -1),
-            attackInfo.pushPower.moveDistance.y,
-            attackInfo.pushPower.moveDistance.z
-        );
-        defender.SetForceMove(new MoveInfo
-        {
-            inFrames = attackInfo.pushPower.inFrames,
-            moveDistance = moveDis,
-            tweenMethod = attackInfo.pushPower.tweenMethod
-        });
-        
-        //抓取：表里这一记写了 holdFrames 就顺手把人举起来，约束本身在 TickAll 最后一拍统一生效
-        attacker.TryGrab(defender, attackInfo);
-
-        //CancelTag开启
-        foreach (string cTag in attackInfo.tempBeCancelledTagTurnOn)
-        {
-            attacker.action.AddTempBeCancelledTag(cTag);
-        }
-        foreach (string cTag in defensePhase.tempBeCancelledTagTurnOn)
-        {
-            defender.action.AddTempBeCancelledTag(cTag);
-        }
-        
-        //造成伤害
-        //todo demo里就先不做了
-        
-        //增加命中记录，确保不连续命中
-        attacker.AddHitRecord(defender, attackInfo.phase);
     }
 }

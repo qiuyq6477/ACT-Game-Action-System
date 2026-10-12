@@ -75,9 +75,29 @@ public class CharacterObj : MonoBehaviour
     private Dictionary<AttackHitBox, List<BeHitBox>> _boxTouches = new Dictionary<AttackHitBox, List<BeHitBox>>();
     
     /// <summary>
-    /// 当前动作的命中记录，更换动作就清空了这个列表了
+    /// 当前动作的命中记录，更换动作就清空了这个列表了。
+    /// 【元素是 struct，列表只在角色构造时分配这一次】：8 的容量按"一个动作能记下几个目标"给，
+    /// 真超了才扩容一次（那是一次性的，不是每记命中一个对象——以前就是那种，
+    /// 见 `Doc/issue/hit-event-heap-alloc.md`）
     /// </summary>
-    public List<HitRecord> HitRecords { get; private set; } = new List<HitRecord>();
+    public List<HitRecord> HitRecords { get; private set; } = new List<HitRecord>(8);
+
+    /// <summary>
+    /// 数值组件：血量、攻击力、防御。没有这个组件的角色不参与伤害结算（demo 里那些只会挥拳的
+    /// 靶子因此可以一直挨打不掉血）。在 `BindBoxes` 里认一次，编辑态用例也走这条路
+    /// </summary>
+    public CombatStats Stats { get; private set; }
+
+    /// <summary>
+    /// 霸体条。没有这个组件 = 没有霸体，每一记都打断动作
+    /// </summary>
+    public PoiseGauge Poise { get; private set; }
+
+    /// <summary>
+    /// 血打空了。命中查询一看到它就直接收工——死人不再挨第二下，
+    /// 也就不会被重复结算、更不会在断气之后再被路由一次 Death
+    /// </summary>
+    public bool IsDead => Stats && Stats.IsDead;
 
     /// <summary>
     /// 身上的攻击盒与受击盒，Awake里收集好，供GameMain的时钟按固定顺序刷新
@@ -125,6 +145,20 @@ public class CharacterObj : MonoBehaviour
     {
         get => input.inversed;
         set => input.inversed = value;
+    }
+
+    /// <summary>
+    /// 那个人在我的正脸那一侧吗（只看横向：纵深是车道，与"面向"无关，移植后面向仍然只有两向）。
+    /// 【格挡要用它】：源工程的格挡是 `IsDefending(invertedDir)`，背后挨刀不算挡住；
+    /// 这里不看表里的 forceDir，因为 forceDir 是"这一记设计上算从哪儿打"，
+    /// 而能不能挡住取决于两个人此刻实际站哪儿
+    /// </summary>
+    public bool FacesToward(CharacterObj other)
+    {
+        if (!other) return false;
+        float facing = Inversed ? -1f : 1f;
+        //正好重叠（横向差 0）算在正脸：宁可放过挨刀的那一下，也不要"明明对着站却挡不住"
+        return (other.transform.position.x - transform.position.x) * facing >= 0f;
     }
 
     /// <summary>
@@ -211,6 +245,17 @@ public class CharacterObj : MonoBehaviour
                            "并把地面碰撞体放到这一层，否则角色踩不到任何东西");
         else
             _groundMask = 1 << groundLayer;
+
+        //数值与霸体组件同样在这里认一次（同一个理由：编辑态用例不跑 Awake，而结算用例要能在编辑态跑）。
+        //两个都是可选的——没挂 CombatStats 的角色不参与伤害结算，没挂 PoiseGauge 就是没有霸体。
+        //【位置在 early-return 之前】：用例和 Step 2 的对象池都会"先有角色、后挂组件"，
+        //放在护栏后面就再也认不到了；而满值必须跟认组件在同一次里给，否则编辑态读到的 Hp 是 0，
+        //一记打上去就是"已经死了"
+        Stats = GetComponent<CombatStats>();
+        Poise = GetComponent<PoiseGauge>();
+        //幂等赋值，重复调没有副作用（组件自己的 Awake 在 Play Mode 里还会再来一次，同样只是填回满值）
+        if (Stats) Stats.Revive();
+        if (Poise) Poise.Refill();
 
         if (AttackBoxes != null) return;
 
@@ -303,9 +348,15 @@ public class CharacterObj : MonoBehaviour
         //以下内容只有不在硬直才会执行
         if (!action.Freezing)
         {
-            //HitRecords
-            foreach (HitRecord record in HitRecords)
+            //HitRecords：struct 在 List 里改的是取出来的那份拷贝，所以必须写回去（见 HitRecord 的类注释）
+            for (int i = 0; i < HitRecords.Count; i++)
+            {
+                HitRecord record = HitRecords[i];
                 record.Tick();
+                HitRecords[i] = record;
+            }
+            //韧性也在硬直期外才回：正被打得站不稳的人不该一边挨打一边把霸体回满
+            if (Poise) Poise.Tick();
         }
 
         Move();
@@ -577,6 +628,9 @@ public class CharacterObj : MonoBehaviour
         
         defensePhase = new BeHitBoxTurnOnInfo();
         if (!target) return false;
+        //死人不再挨第二下：一记多段的大招会在好几拍里反复查到同一个靶子，
+        //少了这一条就会在断气之后再路由一次 Death、再扣一次血
+        if (target.IsDead) return false;
         long gcProbe = GcProbe.Begin(GcProbe.Region.CanAttackTargetNow);
         
         //目标当前开启着哪些受击盒tag：ActionController每帧已经算好了，这里直接取掩码
@@ -659,35 +713,47 @@ public class CharacterObj : MonoBehaviour
     {
         int idx = action.IndexOfAttack(attackPhase);
         if (idx < 0) return;    //没有这个伤害阶段，结束
-        
-        HitRecord rec = GetHitRecord(target, attackPhase);
-        if (rec == null)
+        AttackInfo attack = action.CurrentAction.attacks[idx];
+
+        int at = IndexOfRecord(target, attackPhase);
+        if (at < 0)
         {
-            HitRecords.Add(new HitRecord(target, attackPhase, action.CurrentAction.attacks[idx].canHitSameTarget - 1,
-                action.CurrentAction.attacks[idx].hitSameTargetDelayFrames));
+            HitRecords.Add(new HitRecord(target, attackPhase, attack.canHitSameTarget - 1, attack.hitSameTargetDelayFrames));
+            return;
         }
-        else
-        {
-            rec.CooldownFrames = action.CurrentAction.attacks[idx].hitSameTargetDelayFrames;
-            rec.CanHitTimes -= 1;
-        }
+        //struct 元素改的是取出来的那份拷贝，写回去才算数
+        HitRecord rec = HitRecords[at];
+        rec.CooldownFrames = attack.hitSameTargetDelayFrames;
+        rec.CanHitTimes -= 1;
+        HitRecords[at] = rec;
     }
-    
+
     /// <summary>
-    /// 找出关于目标的HitRecord，如果没有就是null
+    /// 按这一记的"同目标可命中次数"记录，此刻还能不能再打他。
+    /// 【取代原来的 GetHitRecord(…) == null 判法】：HitRecord 现在是 struct，
+    /// 一个找不到的查询不可能返回"空的 struct"和"真记录"两种含义，所以把查询收成一个布尔问题
     /// </summary>
     /// <param name="target">谁被命中</param>
     /// <param name="phase">算是第几阶段的攻击命中的</param>
-    /// <returns></returns>
-    public HitRecord GetHitRecord(CharacterObj target, int phase)
+    public bool CanHitTargetAgain(CharacterObj target, int phase)
     {
-        foreach (HitRecord record in HitRecords)
-        {
-            if (record.UniqueId == target.gameObject.GetInstanceID() && record.Phase == phase)
-                return record;
-        }
+        int at = IndexOfRecord(target, phase);
+        if (at < 0) return true;    //从没打过他，当然能打
+        HitRecord rec = HitRecords[at];
+        return rec.CooldownFrames <= 0 && rec.CanHitTimes > 0;
+    }
 
-        return null;
+    /// <summary>
+    /// 关于某个目标某个阶段的记录在列表里的下标，没有就返回 -1
+    /// </summary>
+    private int IndexOfRecord(CharacterObj target, int phase)
+    {
+        int id = target.gameObject.GetInstanceID();
+        for (int i = 0; i < HitRecords.Count; i++)
+        {
+            if (HitRecords[i].UniqueId == id && HitRecords[i].Phase == phase) return i;
+        }
+        return -1;
     }
     
     /// <summary>

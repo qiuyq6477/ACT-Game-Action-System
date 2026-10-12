@@ -524,7 +524,17 @@
                     },
                     "tempBeCancelledTagTurnOn": [
                         "PunchCombo1"
-                    ]
+                    ],
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.4,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "defensePhase": [
@@ -637,7 +647,17 @@
                     },
                     "tempBeCancelledTagTurnOn": [
                         "PunchCombo2"
-                    ]
+                    ],
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.4,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "defensePhase": [
@@ -770,7 +790,17 @@
                     },
                     "tempBeCancelledTagTurnOn": [
                         "KickCombo1"
-                    ]
+                    ],
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.45,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "defensePhase": [
@@ -884,7 +914,17 @@
                         "param": "Hurt",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.45,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 8,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "defensePhase": [
@@ -968,7 +1008,17 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "blockStunFrames": 10,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.5,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 10,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "defensePhase": [
@@ -1253,7 +1303,18 @@
                         "param": "Hurt",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 8,
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -1396,7 +1457,18 @@
                         "param": "Hurt",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 8,
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -1508,7 +1580,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 22,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -1651,7 +1734,18 @@
                         "param": "Hurt",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 10,
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -1778,7 +1872,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 14,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -1925,7 +2030,18 @@
                         "param": "Hurt",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 14,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -2041,7 +2157,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 12,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -2180,7 +2307,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 12,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -2496,7 +2634,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 8,
+                    "blockStunFrames": 6,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -2617,7 +2766,18 @@
                         "param": "Beaten",
                         "priority": 5
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 12,
+                    "blockStunFrames": 8,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0.35,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 6,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -2752,12 +2912,15 @@
                         "changeType": 0,
                         "param": "",
                         "priority": 0
-                    }
+                    },
+                    "block": true
                 }
             ],
             "cues": [],
             "说明": [
-                "Block 每拍登记，所以按住期间这条指令每拍都成立，于是一直回到格挡；keepPlayingAnim 让姿势连贯。源工程格挡是全额免伤、没有 blockstun 与推开，那两条是 1.9 要加的"
+                "Block 每拍登记，所以按住期间这条指令每拍都成立，于是一直回到格挡；keepPlayingAnim 让姿势连贯",
+                "切片 1.9：defensePhase[0] 上的 block=true 就是格挡的开关——受击阶段本身代表一部分防御，所以开关做在它身上而不是动作上。免伤多少、挡住之后罚几拍（blockStunFrames）、推开多远（blockPush）全在攻击那一方的表上",
+                "两条前提要记住：格挡只对挂着 CombatStats 且 maxHp>0 的角色生效（没配血量=不参与数值结算，也就挡不了）；打在背后的那一记不算挡住（由 CharacterObj.FacesToward 判）"
             ],
             "priority": 10
         },
@@ -3149,7 +3312,18 @@
                         "fromFrame": 0,
                         "transFrames": 0
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 0,
+                    "blockStunFrames": 0,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -3362,7 +3536,18 @@
                         "fromFrame": 0,
                         "transFrames": 0
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 0,
+                    "blockStunFrames": 0,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -3524,7 +3709,18 @@
                         "fromFrame": 0,
                         "transFrames": 0
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 0,
+                    "blockStunFrames": 0,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [
@@ -3690,7 +3886,18 @@
                         "fromFrame": 0,
                         "transFrames": 0
                     },
-                    "tempBeCancelledTagTurnOn": []
+                    "tempBeCancelledTagTurnOn": [],
+                    "poiseDamage": 30,
+                    "blockStunFrames": 0,
+                    "blockPush": {
+                        "moveDistance": {
+                            "x": 0,
+                            "y": 0.0,
+                            "z": 0.0
+                        },
+                        "inFrames": 0,
+                        "tweenMethod": "Slowly"
+                    }
                 }
             ],
             "attackPhase": [

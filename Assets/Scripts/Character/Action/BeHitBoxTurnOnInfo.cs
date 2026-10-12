@@ -28,6 +28,14 @@ public struct BeHitBoxTurnOnInfo
     /// 这样开启的盒子，优先级会发生怎样的临时变化
     /// </summary>
     public int priority;
+
+    /// <summary>
+    /// 挂着这一组受击盒的这段时间，是不是"格挡状态"。
+    /// 【为什么做在受击阶段而不是做在动作上】：这一条本来就在回答"这一部分防御是什么防御"
+    /// ——盾牌挨揍和屁股挨揍效果完全不同，而区分它们的正好就是这里开的这组盒子。
+    /// 【只管开合不管朝向】：打在后脑勺的该不该算挡住由 CombatPipeline 去问几何，表里不必多一个会填错的方向
+    /// </summary>
+    public bool block;
     
     /// <summary>
     /// 如果命中了这里的受击框，就会临时开启一些tempBeCancelledTag，这里用id去索引

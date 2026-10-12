@@ -10,7 +10,7 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 解决的问题：这一改的全部收益是"动作在第几帧判到、能不能接上"跟渲染帧率无关，
 /// 而这件事肉眼一点都看不出来（差的都是16.7毫秒的零头），所以只能用例来钉。
 ///
-/// 钉的十一件事：
+/// 钉的十二件事：
 /// 1. 判定盒实际生效的帧 == 表里填的帧区间（窗口从百分比换成绝对帧号，不能换错）；
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
@@ -43,6 +43,13 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 ///    玩家一动敌人就飘在原地）；偏移的 x 随正反手镜像而 z 不镜像；抓取系内部换动作不解约束、
 ///    挨一记就解；holdFrames 走完就撒手；投掷那一记的合成盒真的打得到手里的人，解约束之后按 Arc
 ///    抛物线飞出去并落回地面；Arc 这条曲线本身两头同高、最高点就是表里那个 y。
+/// 12. 伤害、霸体与格挡（BeatEmUp 移植切片 1.9）：伤害 = 攻击力 × 表里倍率 × 攻击盒倍率 × 肉质 − 防御
+///    （减成负数夹在 0）；韧性没被打空就只掉血——不换动作、不硬直、不推开；正面格挡全额免伤但罚
+///    blockStunFrames 拍并推开 blockPush 那段距离，背后的那一记挡不住；打空血路由到这个人自己那份
+///    子集里的 Death 行，而死人不再被 CanAttackTargetNow 挑中；没挂 CombatStats 的角色行为与 1.9 之前
+///    一字不差（这条是兼容闸门）；韧性只在隔满恢复期之后一拍一点地回，回满就停。
+///    【分类挑选的兜底也被第12区钉住了】：Hurt/Beaten 两支挑选函数认不出正反手 id 时必须落到候选第一行，
+///    返回空 ActionInfo 会让移植家的角色挨打一动不动。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
 /// 不新建场景也不写进你正开着的场景。第1到10区只跑到动作拍为止，判定盒刷新和命中结算读的就是这里断言的那两个掩码；
@@ -51,7 +58,9 @@ using UnityEngine.TestTools;    //LogAssert：故意触发的 Debug.LogError 要
 /// 第13区大多只跑到动作拍，只有制造滞空那一处要额外走一拍移动拍（地面探测在那一拍里写 State）；
 /// 第15区整条抛物线都要跑，所以它既跑移动拍，也自己摆一块 Ground 层的面板当地面——
 /// EditMode 没有场景，不造地面角色就一路往下掉；
-/// 第16区跑满整条链（移动、同轨推挤、抓取约束三拍都在内），因为"被举者这一拍站在哪"就是最后那一拍写的。
+/// 第16区跑满整条链（移动、同轨推挤、抓取约束三拍都在内），因为"被举者这一拍站在哪"就是最后那一拍写的；
+/// 第17区也跑满整条链，而且它打的是真结算入口（CombatPipeline.ResolveHit）——"挡住之后动作一动不动"
+/// 这件事只有把整条链跑起来才看得见。
 /// </summary>
 public class ActionFrameClockTests
 {
@@ -86,6 +95,7 @@ public class ActionFrameClockTests
         CueDispatch.Handler = null;
         if (_targetRig != null) Object.DestroyImmediate(_targetRig);
         if (_groundRig != null) Object.DestroyImmediate(_groundRig);
+        if (_poiseRig != null) Object.DestroyImmediate(_poiseRig);
         Object.DestroyImmediate(_rig);
     }
 
@@ -1526,6 +1536,11 @@ public class ActionFrameClockTests
     private GameObject _groundRig;
 
     /// <summary>
+    /// 第17区那条韧性条用例的临时宿主：一个空 GameObject 上只挂 PoiseGauge，不牵角色进来
+    /// </summary>
+    private GameObject _poiseRig;
+
+    /// <summary>
     /// 在脚下摆一块 Ground 层的面板，上表面正好在 surfaceY。
     /// 【为什么用例要自己造地面】：EditMode 没有场景，prefab 底下什么都是空的，
     /// 而这一区要断言的是「起飞—滞空—落地」这条只有地形才能走完的路
@@ -1663,9 +1678,9 @@ public class ActionFrameClockTests
     //==================================== 16. 抓取约束与投掷（切片 1.8） ====================================
     //
     // 这一区走的全是真表：PlayerGrab / PlayerHold / PlayerGrabPunch / PlayerThrow / Grabbed
-    // 都是 1.8 写进 Action.json 的行。【结算那一步为什么在测试里复刻】：DoAttack 是 GameMain 私有的，
-    // 而本区要钉的是"约束本身在每一拍干了什么"，所以照它的顺序把相关的几条搬过来一份；
-    // "按下 E 真的举起、真的把人摔出去"整条链在 Play Mode 里端到端验，两边各管一段。
+    // 都是 1.8 写进 Action.json 的行。结算那一步从切片 1.9 起打的是真入口
+    // （`CombatPipeline.ResolveHit`，见下面的 ApplyHit），"按下 E 真的举起、真的把人摔出去"
+    // 整条链另外在 Play Mode 里端到端验。
 
     /// <summary>表里 PlayerGrab 那一记的 holdOffset，x/y 分开写是为了让断言读得懂是哪一头错了</summary>
     private const float HoldX = 0.93f;
@@ -1703,26 +1718,17 @@ public class ActionFrameClockTests
     }
 
     /// <summary>
-    /// 照 GameMain.DoAttack 里与本区有关的几行结算一次：双方换动作、硬直、卡帧、击退、抓取、命中记录。
-    /// 方向按攻击方的正反手镜像（就是那边的 GetForceDirection）
+    /// 结算一次命中：双方换动作、硬直、卡帧、击退、抓取、命中记录。
+    /// 【打的是真入口】：`CombatPipeline.ResolveHit`（切片 1.9 之前它是 GameMain 的私有方法，
+    /// 这里只能照抄一份，抄漏一行就测不到那一行）。
+    /// 方向由攻击方的正反手镜像得出（表里这几招的 forceDir 都是 Forward）。
+    /// 【defensePhase 要能传进来】：格挡与否就写在这一份表数据上，用它默认的 null 结构体就等于
+    /// "对方没有在防御"，那正是本区第17区两条格挡用例要区分的东西
     /// </summary>
-    private static void ApplyHit(CharacterObj attacker, CharacterObj defender, AttackInfo attack)
+    private void ApplyHit(CharacterObj attacker, CharacterObj defender, AttackInfo attack,
+                          BeHitBoxTurnOnInfo defensePhase = default)
     {
-        ForceDirection dir = attacker.Inversed ? ForceDirection.Backward : ForceDirection.Forward;
-        attacker.action.PreorderActionByActionChangeInfo(attack.selfActionChange, dir);
-        defender.action.PreorderActionByActionChangeInfo(attack.targetActionChange, dir, attack.hitStunFrames);
-        defender.action.ApplyHitStop(attack.hitStunFrames);
-        attacker.action.SetFreezing(attack.freezeFrames);
-        Vector3 dis = attack.pushPower.moveDistance;
-        if (dir != ForceDirection.Forward) dis.x = -dis.x;
-        defender.SetForceMove(new MoveInfo
-        {
-            inFrames = attack.pushPower.inFrames,
-            moveDistance = dis,
-            tweenMethod = attack.pushPower.tweenMethod,
-        });
-        attacker.TryGrab(defender, attack);
-        attacker.AddHitRecord(defender, attack.phase);
+        CombatPipeline.ResolveHit(attacker, defender, in attack, in defensePhase, _fist, _targetBody);
     }
 
     /// <summary>
@@ -1959,5 +1965,358 @@ public class ActionFrameClockTests
         Assert.AreEqual(2f, x, 1e-4f, "横向走满就是表里的 moveDistance.x");
         Assert.AreEqual(0f, y, 1e-4f, "抛物线两头都在同一个高度：走完这一程不能把人留在半空");
         Assert.AreEqual(1f, highest, 0.06f, "最高点就是表里的 y（4h·t(1−t) 在 t=0.5 取到 h）");
+    }
+
+    //==================================== 17. 伤害、霸体与格挡结算（切片 1.9） ====================================
+    //
+    // 这一区打的是真入口 `CombatPipeline.Settle` / `ResolveHit`（1.9 之前这段长在 GameMain.DoAttack 里，
+    // 用例碰不到，也就没人钉）。【为什么非要编辑态钉】：这些规则全在"打中人"那一拍里，
+    // 而肉眼能看见的只有血条少了一格——"霸体没破却不该切受击动作""挡住的一记不掉血但罚六拍"
+    // "打死那一记要路由到他自己会的那一行 Death"，这三件事在 Play Mode 里全都长得一样。
+
+    /// <summary>属性组件挂上以后要重新认一次：BindBoxes 里读组件那几行在 early-return 之前，现挂现认。
+    /// 【先摘掉 prefab 上可能已有的那一个】：GetComponent 只给第一个，留着它的话这里改的是另一份</summary>
+    private CombatStats GiveStats(CharacterObj c, float maxHp, float attack, float defense)
+    {
+        if (c.Stats) Object.DestroyImmediate(c.Stats);
+        CombatStats stats = c.gameObject.AddComponent<CombatStats>();
+        stats.maxHp = maxHp;
+        stats.attack = attack;
+        stats.defense = defense;
+        c.BindBoxes();
+        Assert.AreEqual(maxHp, c.Stats.Hp, 1e-4f, "前提：BindBoxes 认到组件就得把血填满，不然第一记就判定成已经死了");
+        return stats;
+    }
+
+    private PoiseGauge GivePoise(CharacterObj c, float maxPoise, int delayFrames, float perFrame)
+    {
+        if (c.Poise) Object.DestroyImmediate(c.Poise);
+        PoiseGauge gauge = c.gameObject.AddComponent<PoiseGauge>();
+        gauge.maxPoise = maxPoise;
+        gauge.recoveryDelayFrames = delayFrames;
+        gauge.recoveryPerFrame = perFrame;
+        c.BindBoxes();
+        return gauge;
+    }
+
+    /// <summary>把两个倍率钉成 1：公式那条用例自己改它们，其余用例不许被 prefab 上的 Inspector 值牵动</summary>
+    private void FlatBoxes()
+    {
+        _fist.damageRate = 1f;
+        _targetBody.meat = 1f;
+    }
+
+    /// <summary>只给靶子他自己会的那几行，起点是 startId</summary>
+    private void StartTargetRows(string startId, params string[] ids)
+    {
+        _target.action.SetAllActions(GameData.ActionsFor(ids), startId);
+    }
+
+    /// <summary>
+    /// 让攻击方正处在"持有这一记攻击的那一行"上。
+    /// 【为什么必须】：EditMode 不跑 Awake，`SetAllActions` 没人叫的话 `CurrentAction` 就是一个默认结构体，
+    /// 它的 `tempBeCancelledTag` 是 null，于是命中结算里"开启临时取消标签"那一段会炸在
+    /// `AddTempBeCancelledTag` 里——那正是运行期不可能出现的状态（角色总得先有个动作才谈得上出招）
+    /// </summary>
+    private void AttackerIn(string id)
+    {
+        _action.SetAllActions(GameData.ActionsFor(FamilyOf(id)), id);
+    }
+
+    /// <summary>
+    /// 摆成正对：靶子在 x=0 面向 +x，攻击者在它面前 0.5 米、面向 -x。
+    /// 【为什么用例要自己摆】：格挡判的是"打没打在正脸上"，那是位置关系，而 prefab 里两个角色是重叠的
+    /// </summary>
+    private void PlaceFaceToFace()
+    {
+        _target.Inversed = false;
+        _character.Inversed = true;
+        _target.transform.position = new Vector3(0f, _target.transform.position.y, 0f);
+        _character.transform.position = new Vector3(0.5f, _character.transform.position.y, 0f);
+    }
+
+    /// <summary>把攻击者挪到靶子背后（靶子的面向不变，还是朝着 +x）</summary>
+    private void PlaceBehindTheTarget()
+    {
+        PlaceFaceToFace();
+        _character.transform.position = new Vector3(-0.5f, _character.transform.position.y, 0f);
+    }
+
+    /// <summary>
+    /// 伤害 = 攻击力 × 表里的 attack × 攻击盒 damageRate × 受击盒 meat − 防御。
+    /// 【四个乘数一个都不许少】：attack 和 meat 这两个字段从项目建起来就躺在表与盒子上，
+    /// 一直到 1.9 才有消费者；它们一旦被漏掉，"打腿比打头轻"这种设计就只是注释里的愿望
+    /// </summary>
+    [Test]
+    public void DamageMultipliesAttackerPowerBoxRateMeatMinusDefense()
+    {
+        BuildTarget();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 5f, 3f);
+        _fist.damageRate = 2f;
+        _targetBody.meat = 0.5f;
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];        // 表里 attack = 1.0
+        BeHitBoxTurnOnInfo defensePhase = Info("BoxingStand").defensePhase[0];
+        DamagePayload p = CombatPipeline.Settle(_character, _target, in attack, in defensePhase, _fist, _targetBody);
+
+        Assert.AreEqual(7f, p.Damage, 1e-4f, "10 攻 × 1.0 倍率 × 2 盒倍率 × 0.5 肉质 − 3 防 = 7");
+        Assert.AreEqual(93f, _target.Stats.Hp, 1e-4f, "Settle 是真的把血扣掉了，不是只算一个数给调用方看");
+        Assert.IsFalse(p.Blocked, "BoxingStand 的受击阶段没写 block");
+        Assert.IsTrue(p.Interrupts, "没挂霸体条就是没有霸体，每一记都打断");
+        Assert.IsFalse(p.Lethal);
+
+        //防御高过伤害时夹在 0：不掉血，但硬直与记录照旧（那是策划的数值问题，框架不替他猜"至少 1 点"）
+        _target.Stats.defense = 999f;
+        DamagePayload chipped = CombatPipeline.Settle(_character, _target, in attack, in defensePhase, _fist, _targetBody);
+        Assert.AreEqual(0f, chipped.Damage, 1e-4f, "减完是负数就夹在 0");
+        Assert.AreEqual(93f, _target.Stats.Hp, 1e-4f, "夹到 0 之后一滴血都没掉");
+        Assert.IsTrue(chipped.Interrupts, "打不动也得打断他——这是硬直，不是伤害");
+    }
+
+    /// <summary>
+    /// 韧性没被打空：掉血，但不换动作、不硬直、不推开。
+    /// 【这一条就是"霸体硬抗"的全部含义】：refactor.md Phase 3 的第1点，以前框架里没有这个概念
+    /// </summary>
+    [Test]
+    public void UnbrokenPoiseSoaksTheBlowWithoutTouchingTheActionOrPushing()
+    {
+        BuildTarget();
+        BuildGround(_targetRig.transform.position.y);
+        FlatBoxes();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 0f, 0f);
+        GivePoise(_target, 20f, 60, 0.5f);
+        AttackerIn("PlayerPunch1");
+        StartTargetRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        PlaceFaceToFace();
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];        // 表里 poiseDamage = 8
+        ApplyHit(_character, _target, attack);
+
+        Assert.AreEqual(90f, _target.Stats.Hp, 1e-4f, "血照掉（10 攻 × 1.0，防御 0）");
+        Assert.AreEqual(12f, _target.Poise.Poise, 1e-4f, "韧性被真的扣掉 8 点");
+        Assert.IsFalse(_target.action.Freezing, "硬抗不该有任何硬直：他这一拍本该继续做自己的事");
+
+        float x = _target.transform.position.x;
+        for (int i = 0; i < 8; i++) TickFight();
+        Assert.AreEqual("PlayerIdle", _target.action.CurrentAction.id,
+            "韧性没破就不该切受击动作——切了就等于霸体条只是条装饰");
+        Assert.AreEqual(x, _target.transform.position.x, 1e-4f, "硬抗也不该被推开");
+    }
+
+    /// <summary>
+    /// 正面格挡：不掉血，但罚 blockStunFrames 拍、推开 blockPush 那段距离，动作一动不动。
+    /// 【源工程没有这一段】：BeatEmUp 的格挡是全额免伤且挡完立刻能动，白挡；
+    /// 这两格新字段就是给"挡住也要付出代价"留的口子
+    /// </summary>
+    [Test]
+    public void BlockedBlowTakesNoDamageButPaysBlockStunAndBlockPush()
+    {
+        BuildTarget();
+        BuildGround(_targetRig.transform.position.y);
+        GiveStats(_target, 100f, 0f, 0f);
+        AttackerIn("Punch1");
+        StartTargetRows("PlayerDefend", FamilyOf("PlayerDefend"));
+        PlaceFaceToFace();
+
+        AttackInfo attack = Info("Punch1").attacks[0];              // blockStun 6、blockPush 0.4 米 / 6 拍
+        BeHitBoxTurnOnInfo defendPhase = Info("PlayerDefend").defensePhase[0];
+        Assert.IsTrue(defendPhase.block, "前提：1.9 给 PlayerDefend 的受击阶段挂上了 block");
+
+        DamagePayload p = CombatPipeline.Settle(_character, _target, in attack, in defendPhase, _fist, _targetBody);
+        Assert.IsTrue(p.Blocked, "正脸挨的这一记该被挡住");
+        Assert.AreEqual(0f, p.Damage, 1e-4f, "格挡全额免伤");
+        Assert.IsFalse(p.Interrupts, "挡住不是被打断：防御姿势不许被换掉");
+        Assert.AreEqual(6, p.StunFrames, "格挡硬直来自新字段 blockStunFrames，不是 hitStunFrames(7)");
+        Assert.AreEqual(0.4f, p.Push.moveDistance.x, 1e-4f, "推开来自新字段 blockPush，不是 pushPower(0.1)");
+
+        ApplyHit(_character, _target, attack, defendPhase);
+        Assert.AreEqual(100f, _target.Stats.Hp, 1e-4f, "结算跑完也一滴血不掉");
+        Assert.IsTrue(_target.action.Freezing, "挡住当拍就该被冻住");
+        int frame = _target.action.CurrentFrame;
+        for (int i = 0; i < 5; i++) TickFight();
+        Assert.AreEqual(frame, _target.action.CurrentFrame,
+            "blockStun 的这 5 拍里动作时钟一步都不许走，否则罚的就是零拍");
+        Assert.AreEqual("PlayerDefend", _target.action.CurrentAction.id, "挡住之后他还站在防御姿势里");
+        float x = _target.transform.position.x;
+        for (int i = 0; i < 15; i++) TickFight();
+        Assert.Less(_target.transform.position.x, x - 0.3f,
+            "罚完之后 blockPush 要真的把他推开（攻击者在正前方，所以推的是 -x）");
+    }
+
+    /// <summary>
+    /// 打在背后的那一记不算挡住：伤害照掉，而且受击动作照常切。
+    /// 【顺带钉住分类挑选的兜底】：靶子这份子集里 Hurt 分类只有 PlayerHit 一行，
+    /// 而挑选函数过去只认 demo 那两条 id（HurtFromForward/Backward），认不出就返回一个空 ActionInfo，
+    /// 于是移植家的角色挨打一动不动——这条断言现在才拦得住那种错
+    /// </summary>
+    [Test]
+    public void BlowFromBehindIsNotBlockedAndStillSwitchesToTheHurtRow()
+    {
+        BuildTarget();
+        BuildGround(_targetRig.transform.position.y);
+        FlatBoxes();
+        GiveStats(_target, 100f, 0f, 0f);
+        AttackerIn("Punch1");
+        StartTargetRows("PlayerDefend", FamilyOf("PlayerDefend"));
+        PlaceBehindTheTarget();
+
+        AttackInfo attack = Info("Punch1").attacks[0];
+        BeHitBoxTurnOnInfo defendPhase = Info("PlayerDefend").defensePhase[0];
+        DamagePayload p = CombatPipeline.Settle(_character, _target, in attack, in defendPhase, _fist, _targetBody);
+        Assert.IsFalse(p.Blocked, "背后挨刀不该算格挡");
+        Assert.Greater(p.Damage, 0f, "没挡住就要掉血");
+        Assert.AreEqual(attack.hitStunFrames, p.StunFrames, "没挡住就回到 hitStunFrames");
+
+        ApplyHit(_character, _target, attack, defendPhase);
+        TickFight();
+        Assert.AreEqual("PlayerHit", _target.action.CurrentAction.id,
+            "byCatalog Hurt 在这个角色自己的子集里就该落到他唯一的那一行受击");
+    }
+
+    /// <summary>
+    /// 打空了血就路由到 Death，而死人不再挨第二下。
+    /// 【Death 分类挑的是这个人自己会的那一行】：移植家的是 PlayerDeath，demo 家压根没有 Death 行，
+    /// 于是那边预约为空、什么也不发生——这正是"全角色共用一张表、按角色分子集"想要的效果
+    /// </summary>
+    [Test]
+    public void LethalBlowRoutesToDeathAndTheCorpseIsNotAttackedAgain()
+    {
+        BuildTarget();
+        BuildGround(_targetRig.transform.position.y);
+        FlatBoxes();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 15f, 0f, 0f);
+        AttackerIn("PlayerPunch1");
+        StartTargetRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        PlaceFaceToFace();
+
+        //两记才打死：第一记只掉血（15 → 5），第二记才是致死那一记。
+        //【为什么不是一次结算就打死】：`Settle` 是真的扣血而不是问一问，所以"先问一次结论、再打一遍真的"
+        //这种写法会把同一记结算跑两遍——第一遍就已经把人打死了，第二遍读到的是"本来就死了"，
+        //于是 Lethal 变成 false、路由到 Death 那一条分支根本不会走。这条用例第一次就是这么红的
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];        // 10 点伤害
+        BeHitBoxTurnOnInfo defensePhase = Info("PlayerIdle").defensePhase[0];
+        DamagePayload first = CombatPipeline.Settle(_character, _target, in attack, in defensePhase, _fist, _targetBody);
+        Assert.IsFalse(first.Lethal, "15 血挨 10 点不该就算致死");
+        Assert.AreEqual(5f, _target.Stats.Hp, 1e-4f);
+
+        ApplyHit(_character, _target, attack);
+        Assert.AreEqual(0f, _target.Stats.Hp, 1e-4f, "血量夹在 0，不许出现 -5");
+        TickFight();
+        Assert.AreEqual("PlayerDeath", _target.action.CurrentAction.id, "致死那一记路由到 Death 分类");
+
+        Assert.IsTrue(_target.IsDead);
+        Assert.IsFalse(_character.CanAttackTargetNow(_target, out AttackInfo deadPhase, out BeHitBoxTurnOnInfo deadDefense,
+                out AttackHitBox deadBox, out BeHitBox deadTargetBox),
+            "死人不再挨第二下：少了这一条，一记多段的大招会在好几拍里反复结算同一个人，" +
+            "断气之后还会再被路由一次 Death");
+    }
+
+    /// <summary>
+    /// 没挂 CombatStats 的角色：一滴血不掉，但打断、硬直、推开与 1.9 之前一字不差。
+    /// 【这条是兼容性的闸门】：场上多的是灰盒靶子和不需要数值的角色，
+    /// 数值结算必须是可选件，而且"可选"的另一面是"没装就等于老行为"
+    /// </summary>
+    [Test]
+    public void CharacterWithoutStatsKeepsThePreDamageBehaviour()
+    {
+        BuildTarget();
+        //prefab 上以后可能会挂上属性组件（Play Mode 要验伤害就得挂），这条用例要的是"没装"那种角色
+        if (_target.Stats) Object.DestroyImmediate(_target.Stats);
+        if (_target.Poise) Object.DestroyImmediate(_target.Poise);
+        _target.BindBoxes();
+        Assert.IsNull(_target.Stats, "前提：摘掉之后 BindBoxes 要重新认一次，角色这一头不能留着旧的引用");
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];
+        BeHitBoxTurnOnInfo defensePhase = Info("BoxingStand").defensePhase[0];
+        DamagePayload p = CombatPipeline.Settle(_character, _target, in attack, in defensePhase, _fist, _targetBody);
+
+        Assert.AreEqual(0f, p.Damage);
+        Assert.IsFalse(p.Blocked);
+        Assert.IsTrue(p.Interrupts, "没装组件不是有霸体，是压根不参与结算");
+        Assert.AreEqual(attack.hitStunFrames, p.StunFrames);
+        Assert.AreEqual(attack.pushPower.moveDistance.x, p.Push.moveDistance.x, 1e-4f);
+        Assert.AreEqual(attack.pushPower.inFrames, p.Push.inFrames);
+    }
+
+    /// <summary>
+    /// 韧性被打空的那一记才算打断：前一记硬抗、后一记崩，两记之间只有韧性条在动。
+    /// 【为什么单独一条】：`UnbrokenPoise...` 钉的是"没破不该断"，这一条钉的是"破了就该断"，
+    /// 少任何一半都可以写成"永远不断"或"永远断"那种实现。
+    /// 【两记都直接走 ApplyHit】：真游戏里同一个人同一记攻击有 `CanHitTargetAgain` 挡着（60 拍冷却），
+    /// 这里要测的是"同一份表数据连打两下"，所以绕开那一道门，不影响结论
+    /// </summary>
+    [Test]
+    public void PoiseBreaksOnTheBlowThatRunsItOutAndRestoresTheStagger()
+    {
+        BuildTarget();
+        BuildGround(_targetRig.transform.position.y);
+        FlatBoxes();
+        GiveStats(_character, 100f, 10f, 0f);
+        GiveStats(_target, 100f, 0f, 0f);
+        GivePoise(_target, 10f, 6000, 1f);       // 恢复期给得很长，本条用例里不许它偷偷回
+        AttackerIn("PlayerPunch1");
+        StartTargetRows("PlayerIdle", FamilyOf("PlayerIdle"));
+        PlaceFaceToFace();
+
+        AttackInfo attack = Info("PlayerPunch1").attacks[0];      // poiseDamage 8、hitStun 7、push 0.35
+        ApplyHit(_character, _target, attack);
+        Assert.AreEqual(2f, _target.Poise.Poise, 1e-4f, "10 点韧性挨 8 点，剩 2 点：还没破");
+        Assert.AreEqual(90f, _target.Stats.Hp, 1e-4f, "血照掉");
+        float xAfterFirst = _target.transform.position.x;
+        for (int i = 0; i < 4; i++) TickFight();
+        Assert.AreEqual("PlayerIdle", _target.action.CurrentAction.id, "第一记没破霸体，不该切受击");
+
+        ApplyHit(_character, _target, attack);
+        Assert.AreEqual(0f, _target.Poise.Poise, 1e-4f, "第二记的 8 点大于剩下的 2 点：清零并打崩");
+        Assert.AreEqual(80f, _target.Stats.Hp, 1e-4f);
+        TickFight();
+        Assert.AreEqual("PlayerHit", _target.action.CurrentAction.id, "崩防的那一记该照常切受击动作");
+        for (int i = 0; i < 12; i++) TickFight();
+        Assert.Less(_target.transform.position.x, xAfterFirst - 0.2f,
+            "崩防之后击退也要照常回来（硬抗那几拍是一毫米都不推的）");
+    }
+
+    /// <summary>
+    /// 韧性只在"隔了 recoveryDelayFrames 之后"才开始回，一回就是一拍一点，回到上限就停住。
+    /// 【直接问组件而不是问角色】：恢复节奏是个纯计数，跟动作、地面、朝向都没关系，
+    /// 扯进角色链里就看不出到底是哪一格错了
+    /// </summary>
+    [Test]
+    public void PoiseRefillsOnlyAfterTheDelayAndThenOneStepPerFrame()
+    {
+        _poiseRig = new GameObject("ACT-Test-Poise");
+        _poiseRig.hideFlags = HideFlags.DontSaveInEditor | HideFlags.HideInHierarchy;
+        PoiseGauge gauge = _poiseRig.AddComponent<PoiseGauge>();
+        gauge.maxPoise = 20f;
+        gauge.recoveryDelayFrames = 10;
+        gauge.recoveryPerFrame = 1f;
+        gauge.Refill();
+
+        Assert.IsFalse(gauge.Consume(8f), "20 点韧性挨 8 点不该被打断");
+        Assert.AreEqual(12f, gauge.Poise, 1e-4f);
+
+        for (int i = 0; i < 9; i++)
+        {
+            LogicClock.Advance();
+            gauge.Tick();
+        }
+        Assert.AreEqual(12f, gauge.Poise, 1e-4f, "恢复期没到就一点都不回：边挨打边回满等于没有霸体");
+
+        LogicClock.Advance();
+        gauge.Tick();
+        Assert.AreEqual(13f, gauge.Poise, 1e-4f, "隔满 recoveryDelayFrames 的那一拍开始回");
+
+        for (int i = 0; i < 30; i++)
+        {
+            LogicClock.Advance();
+            gauge.Tick();
+        }
+        Assert.AreEqual(20f, gauge.Poise, 1e-4f, "回到上限就停住，不许溢出");
+
+        Assert.IsTrue(gauge.Consume(0f), "poiseDamage 留空(0)的攻击一律打断——缺省必须站在老行为那一边");
+        Assert.AreEqual(20f, gauge.Poise, 1e-4f, "而那一记其实一点韧性都没扣");
     }
 }

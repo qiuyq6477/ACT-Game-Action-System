@@ -58,6 +58,16 @@ public static class GameData
                         for (int i = 0; i < info.cancelTag.Length; i++)
                             CancelConditionMethod.Validate(info.cancelTag[i].cancelCondition,
                                                            info.id + " 的第 " + i + " 条 cancelTag");
+                    //击退与格挡推开的曲线名同理：认不出来不会报错，只会"打中人一动不动"，
+                    //而这张表（ForceMoveMethod）和 rootMotionTween 那张（RootMotionMethod）撞过名
+                    if (info.attacks != null)
+                        for (int i = 0; i < info.attacks.Length; i++)
+                        {
+                            ForceMoveMethod.Validate(info.attacks[i].pushPower.tweenMethod,
+                                                     info.id + " 的第 " + i + " 记 pushPower");
+                            ForceMoveMethod.Validate(info.attacks[i].blockPush.tweenMethod,
+                                                     info.id + " 的第 " + i + " 记 blockPush");
+                        }
                     Actions[info.id] = info;
                     _cachedAllActions.Add(info);
                 }

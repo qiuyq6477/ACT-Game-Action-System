@@ -9,6 +9,13 @@ using UnityEngine;
 /// </summary>
 public static class ForceMoveMethod
 {
+    /// <summary>
+    /// "这一记没有位移"用的常量委托。
+    /// 【为什么不就地写 lambda】：它不捕获任何变量，所以编译器把它缓存成一个静态委托，
+    /// 全工程共用一个实例——击退那一拍一次都不分配
+    /// </summary>
+    public static readonly Func<ForceMove, Vector3> NoMove = _ => Vector3.zero;
+
     public static Dictionary<string, Func<ForceMove, Vector3>> Methods =
         new Dictionary<string, Func<ForceMove, Vector3>>()
         {
@@ -47,4 +54,20 @@ public static class ForceMoveMethod
                 }
             }
         };
+
+    /// <summary>
+    /// 开机把表里写的曲线名过一遍：空串合法（那一记没有位移），认不出来才喊。
+    /// 【为什么要喊】：认不出来时 `ForceMove.FromData` 静默落到 `NoMove`，表现是"打中人一动不动"，
+    /// 而这条静默路径能把一个拼写错误藏到永远。本工程真撞过一次：
+    /// `rootMotionTween.method` 的 GoStraight 在 `RootMotionMethod` 里有、在这张表里没有
+    /// </summary>
+    /// <param name="tweenMethod">表里填的名字</param>
+    /// <param name="where">说清楚是哪一行的哪个字段，别让读日志的人再去猜</param>
+    public static void Validate(string tweenMethod, string where)
+    {
+        if (string.IsNullOrEmpty(tweenMethod) || Methods.ContainsKey(tweenMethod)) return;
+        Debug.LogError("表里 " + where + " 的 tweenMethod 写的是 「" + tweenMethod + "」，" +
+                       "ForceMoveMethod 的函数表里没有这一条，于是这一记位移会一动不动。" +
+                       "现有可选：" + string.Join("、", Methods.Keys) + "（留空表示没有位移）");
+    }
 }

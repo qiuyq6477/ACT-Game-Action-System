@@ -18,8 +18,11 @@ public struct MoveInfo
     public int inFrames;
 
     /// <summary>
-    /// 移动函数，会从Methods/MoveTween中找到对应的函数，如果没有这个函数，就会按照匀速的来
-    /// 空字符串时直接视为没有这个函数
+    /// 移动函数，从 `Methods/ForceMoveMethod` 这张表里按名字取。
+    /// 【认不出来 = 一动不动】：`ForceMove.FromData` 落到 `NoMove`，而 `GameData.Load` 会为此喊一条
+    /// LogError——这条静默路径能把一个拼写错误藏到永远。空串是合法的，表示"这一记没有位移"。
+    /// 【注意有两张撞名的函数表】：`rootMotionTween.method` 走的是 `RootMotionMethod`（那里面有 GoStraight），
+    /// 这张表里只有 Slowly / Arc，抄错表就是"打中人不动"
     /// </summary>
     public string tweenMethod;
 

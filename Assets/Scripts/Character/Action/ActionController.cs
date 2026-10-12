@@ -432,6 +432,9 @@ public class ActionController : MonoBehaviour
     /// <param name="freezingAfterChange">切换动作后，硬直多少逻辑帧</param>
     private void ChangeAction(string actionId, float transitionNormalized, int startFrame, int freezingAfterChange)
     {
+        //这一整段单独设一个探针分区：换动作是"打中人那一拍"最贵的一步，而它的分配大头在
+        //anim.CrossFade 与随后那次 anim.Update 里（引擎内部），不分开算就永远分不清哪一笔是我们写的
+        long gcProbe = GcProbe.Begin(GcProbe.Region.ChangeAction);
         ActionInfo aInfo = GetActionById(actionId, out bool foundAction);
         if (foundAction)
         {
@@ -482,6 +485,7 @@ public class ActionController : MonoBehaviour
             if (aInfo.flip) command.inversed = !command.inversed;
             
         }
+        GcProbe.End(GcProbe.Region.ChangeAction, gcProbe);
     }
 
     /// <summary>
