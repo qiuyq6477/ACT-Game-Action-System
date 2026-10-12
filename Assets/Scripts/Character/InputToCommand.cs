@@ -265,40 +265,57 @@ public class InputToCommand : MonoBehaviour
 
     /// <summary>
     /// 删除所有的非方向输入，在变化动作的时候删除
+    /// 采用原址双指针原地过滤，避免频繁调用 RemoveAt 导致的内部数组大量内存拷贝与时间退化。
     /// </summary>
     public void CleanNonDirectionInputs()
     {
-        int index = 0;
-        while (index < _input.Count)
-            if (!IsDirectionInput(_input[index].Key)) _input.RemoveAt(index);
-            else index++;
-        index = 0;
-        while (index < _newInputs.Count)
-            if (!IsDirectionInput(_newInputs[index].Key)) _newInputs.RemoveAt(index);
-            else index++;
-        //_nonDirectCooldown = NonDirectionInputCooldown;
+        FilterInPlace(_input);
+        FilterInPlace(_newInputs);
+    }
+
+    private static void FilterInPlace(List<KeyInputRecord> list)
+    {
+        int writeIndex = 0;
+        for (int readIndex = 0; readIndex < list.Count; readIndex++)
+        {
+            if (IsDirectionInput(list[readIndex].Key))
+            {
+                if (writeIndex != readIndex)
+                {
+                    list[writeIndex] = list[readIndex];
+                }
+                writeIndex++;
+            }
+        }
+        if (writeIndex < list.Count)
+        {
+            list.RemoveRange(writeIndex, list.Count - writeIndex);
+        }
     }
 
     /// <summary>
     /// 一个输入是否是方向输入
+    /// switch 语句，底层编译为跳转表 (Jump Table)，实现 0 GC 堆分配与 O(1) 极速匹配。
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
     public static bool IsDirectionInput(KeyMap key)
     {
-        List<KeyMap> keys = new List<KeyMap>
+        switch (key)
         {
-            KeyMap.Backward,
-            KeyMap.UpBackward,
-            KeyMap.Up,
-            KeyMap.UpForward,
-            KeyMap.Forward,
-            KeyMap.DuckForward,
-            KeyMap.Duck,
-            KeyMap.DuckBackward,
-            KeyMap.NoDirection //这个也会出现在搓招操作，所以得算方向
-        };
-        return keys.Contains(key);
+            case KeyMap.Backward:
+            case KeyMap.UpBackward:
+            case KeyMap.Up:
+            case KeyMap.UpForward:
+            case KeyMap.Forward:
+            case KeyMap.DuckForward:
+            case KeyMap.Duck:
+            case KeyMap.DuckBackward:
+            case KeyMap.NoDirection:
+                return true;
+            default:
+                return false;
+        }
     }
 }
 

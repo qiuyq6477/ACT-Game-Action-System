@@ -86,6 +86,15 @@ public class ActionController : MonoBehaviour
     public bool Freezing => _freezing > 0;
 
     /// <summary>
+    /// 施加微秒级卡肉顿挫（HitStop）或受击硬直（HitStun）
+    /// </summary>
+    /// <param name="duration">持续秒数</param>
+    public void ApplyHitStop(float duration)
+    {
+        _freezing = Mathf.Max(_freezing, duration);
+    }
+
+    /// <summary>
     /// 更换动作的时候的回调函数
     /// 参数1：ActionInfo：更换之前的action
     /// 参数2：ActionInfo：更换之后的action
@@ -154,19 +163,26 @@ public class ActionController : MonoBehaviour
             _preorderActions.Add(new PreorderActionInfo(CurrentAction.autoNextActionId));
         }
         
-        //冒泡所有的候选动作，得出应该切换的动作
         _wasPercentage = _pec;   //先设置这个，之后可能会被ChangeAction所改变
         if (_preorderActions.Count > 0)
         {
-            //有需要更换的动画就更换
-            _preorderActions.Sort(
-                (candidate1, candidate2) => candidate1.Priority > candidate2.Priority ? -1 : 1
-                );
-            if (_preorderActions[0].ActionId == CurrentAction.id && CurrentAction.keepPlayingAnim)
+            int bestIndex = 0;
+            int maxPriority = _preorderActions[0].Priority;
+            for (int i = 1; i < _preorderActions.Count; i++)
+            {
+                if (_preorderActions[i].Priority > maxPriority)
+                {
+                    maxPriority = _preorderActions[i].Priority;
+                    bestIndex = i;
+                }
+            }
+
+            PreorderActionInfo best = _preorderActions[bestIndex];
+            if (best.ActionId == CurrentAction.id && CurrentAction.keepPlayingAnim)
                 KeepAction(_pec);
             else
-                ChangeAction(_preorderActions[0].ActionId, _preorderActions[0].TransitionNormalized,
-                    _preorderActions[0].FromNormalized, _preorderActions[0].FreezingAfterChangeAction);
+                ChangeAction(best.ActionId, best.TransitionNormalized,
+                    best.FromNormalized, best.FreezingAfterChangeAction);
         }
         
         //清理一下预约列表
@@ -272,7 +288,8 @@ public class ActionController : MonoBehaviour
             {
                 foreach (CancelTag cancelTag in action.cancelTag)
                 {
-                    if (cancelTag.tag == cTag)
+                    // 【工业级重构优化】：采用序数比对（Ordinal），规避区域文化敏感性字符串扫描开销
+                    if (string.Equals(cancelTag.tag, cTag, StringComparison.Ordinal))
                     {
                         tagFit = true;
                         beCancelledTag = bcTag;

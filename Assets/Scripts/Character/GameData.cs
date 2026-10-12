@@ -8,12 +8,14 @@ public static class GameData
 {
     private static bool _loaded = false; 
     public static Dictionary<string, ActionInfo> Actions = new Dictionary<string, ActionInfo>();
-
+    private static List<ActionInfo> _cachedAllActions = new List<ActionInfo>();
+    
     public static void Load()
     {
         if (_loaded) return;
         _loaded = true;
         Actions.Clear();
+        _cachedAllActions.Clear();
 
         TextAsset ta = Resources.Load<TextAsset>("GameData/Action");
         if (ta)
@@ -21,19 +23,17 @@ public static class GameData
             ActionInfoContainer aic = JsonUtility.FromJson<ActionInfoContainer>(ta.text);
             foreach (ActionInfo info in aic.data)
             {
-                if (info.id != "") Actions.Add(info.id, info);
+                if (!string.IsNullOrEmpty(info.id))
+                {
+                    Actions[info.id] = info;
+                    _cachedAllActions.Add(info);
+                }
             }
         }
     }
 
     public static List<ActionInfo> AllActions()
     {
-        List<ActionInfo> res = new List<ActionInfo>();
-        foreach (KeyValuePair<string,ActionInfo> actionInfo in Actions)
-        {
-            res.Add(actionInfo.Value);
-        }
-
-        return res;
+        return _cachedAllActions;
     }
 }

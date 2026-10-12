@@ -7,10 +7,11 @@
 /// ActionData就是读取Json表的数据，里面只有string int等基本类型，然后通过转换函数：ActionInfo::FromData(ActionData data)
 /// 来转换出来类似enum的结构，但是这个比较繁琐，可以在第一次重构的时候做，这个是必须要做的， 不然策划几乎没法做好
 /// 尤其是enum现在用数字做，很魔法，最好换成string来做。
-/// 但还是这句话，既然是demo……又不是不能用，对吧
+/// TODO:ActionData
 ///
 /// 至于音效和镜头的Tween，也应该是这个结构里面提供的，只是这里就不给范例了，非常简单的
 /// 比如镜头的Tween，其实是一个(float normalized)=>(Vector3 offset, float fieldOfView)
+/// TODO: 音效和镜头的Tween
 /// </summary>
 [Serializable]
 public struct ActionInfo
