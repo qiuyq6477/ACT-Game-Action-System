@@ -22,6 +22,7 @@
 ## 性能验证
 
 - 每帧分配用 `GcProbe.cs` 的分区探针量，判据是**分区 0 B/帧**而不是整帧 0 B（调试 UI 的残留见 `Doc/issue/ui-inputtext-per-frame-alloc.md`）。
-- Unity 2023.2 已经没有 `Profiler.GetAllocatedBytesForCurrentThread`，所以 GcProbe 取 `Profiler.GetMonoUsedSizeLong()` 的区间差值；一帧之内不会跑 GC，差值就是这段代码分配的量。
+- 分配计数只认 `Unity.Profiling.ProfilerRecorder` 的 `ProfilerCategory.Memory / "GC Allocated In Frame"`；`Profiler.GetMonoUsedSizeLong()` 在编辑器里一帧之内不动，用它做差值会量到恒 0（Unity 2023.2 也已无 `GetAllocatedBytesForCurrentThread`）。
+- 任何"全 0"的测量结论，必须自带一个已知非零的对照量（GcProbe 的自检是 1024 字节的分配）；对照量为 0 就说明量的是个瞎指标。详见 `Doc/bugfix/gc-probe-false-zero.md`。
 
 相关文档：`Doc/plan/refactor.md`（十项妥协重构规划，Phase 1 已实施）
