@@ -7,7 +7,8 @@ public static class LogicClock
 {
     /// <summary>
     /// 一个逻辑帧的时长（秒），全工程唯一的时间常量。
-    /// 动画全部是30帧authored的，60Hz的时钟下每个动画帧正好占2个逻辑帧，所以表里的帧数不会有取整误差
+    /// 动画要么是30帧authored（一个动画帧占2个逻辑帧），要么是60帧authored（一个动画帧正好一个逻辑帧），
+    /// 两者都是 1/60 秒的整数倍，所以表里的帧数不会有取整误差。BeatEmUp 移植进来的 clip 全是 60 帧那一档
     /// </summary>
     public const float Tick = 1f / 60f;
 

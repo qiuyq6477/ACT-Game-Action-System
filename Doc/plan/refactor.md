@@ -163,6 +163,7 @@ Unity 2023.2.0f1 编辑器播放 `Assets/Scenes/GameMain.unity`（玩家 + 2 个
 - 改造前 `_pec` 是从 Animator 读的，逻辑进度比屏幕上的姿势**滞后一个渲染帧**，于是命中当帧冻住的姿势比现在深一帧。现在逻辑与姿势同帧，冻结点正好落在判定盒开启的那一帧。想让顿挫抓在更深的姿势上，就改表把窗口往后推一帧，别改代码。
 - **受击硬直每记命中都要刷，不能只挂在换动作上**。原来 `hitStunFrames` 只经由 `PreorderActionByActionChangeInfo` → `ChangeAction` 那一条路写进 `_freezeFrames`，而受击方已经在 `Hurt` 里时，它自己的 `defensePhase.selfActionChange`（`Keep`，优先级 5）跟攻击方的 `targetActionChange`（优先级 5）打平，平手判定让 `Keep` 赢 → 预约是空的 → 不换动作 → 硬直也没人写。表现就是"第一拳有顿帧、第二拳没有"。现在 `DoAttack` 里对防守方无条件 `ApplyHitStop(hitStunFrames)`（取较大者，不叠加），`Doc/issue/` 里那条"重复命中"的疑问一并解决。
 - 动画全是 30 帧 authored，逻辑 60 Hz ⇒ 窗口只会落在偶数帧。这是既有事实，动作编辑器实现时要照此把窗口对齐偶数 tick。
+  > 2026-10 修正：BeatEmUp 移植带进来的 clip 全是 60 帧 authored，窗口可以落在任意帧（见 `Doc/decision/0001` 与 `Doc/plan/beatemup-port.md` 切片 1.4）。上面那条"对齐偶数 tick"只对本工程原有的动作成立。
 - 命中相交的粒度仍是物理步（`Fixed Timestep 0.02`）而不是逻辑帧；`Input.GetButton` 每渲染帧只 poll 一次导致的采样丢失任何帧率都救不回来。两条分别登记在 `Doc/issue/`。
 
 

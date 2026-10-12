@@ -107,7 +107,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 | 1.1 | 面向抽象（冲突 3）+ HD-2D 世界约定：精灵贴到 3D 平面、纵深排序按 Z、透视相机按 PPU 50 标定 | 灰盒肉眼朝向正确、跳起来不穿背景；`Assets/Editor/ActionFrameClockTests.cs` 九个原用例全绿 |
 | 1.2 | 轴改名 + 纵深车道：`NatureMove` 加 Z、竖轴改纵深、`GoStraight` 加可选 `param[3]`、同轨 pairwise 推挤、新建 `LevelBounds` | 新用例：`Inversed=true` 时纵深位移符号不变；13 条旧表项逐 tick 位移不变（原用例⑦须原样绿）；`NatureMove` 分区 0 B |
 | 1.3 ✅ | 命中改逻辑帧采样（F）+ `BeHitBox` layer（阵营层与距离²粗筛都记为偏离，见第八节） | **先写用例再改实现**：命中帧恰好等于表里 `[4,5]` 被跨过的帧、走开当帧立刻打不着、自己的盒子不算靶子、离开采样层查不到、每帧 0.5 米穿过不漏拍；`SampleOverlaps` 分区稳态 0 B；issue 文件与索引行已删 |
-| 1.4 | 导出工具 `Assets/Editor/Tools/ACT/AnimClipToActionTable.cs`，把 17 条攻击 clip 的窗口/盒子轨迹/cue 转成表 | 工具报告零可疑值；逐招与 BeatEmUp 对拍命中帧集合与画面位置；`Tools/ACT/打印动作时长` 全 ✓ |
+| 1.4 ✅ | 导出工具 `Assets/Editor/AnimClipToActionTable.cs`（菜单 `Tools/ACT/导出 BeatEmUp 帧数据草稿`），把 41 条 clip 的窗口/盒子轨迹/cue 转成整数逻辑帧，产出 `beatemup-anim-dump.md` | 可疑值 0 条；命中帧集合按源工程的读法逐招对过（见第八节）；20 条编辑期用例全绿 |
 | 1.5 | 盒子轨迹（A）+ 帧事件表（B）+ 池化的 cue 派发 | cue 触发路径 GcProbe 新分区 0 B/帧 |
 | 1.6 | `CancelConditionMethod` 表（C）+ 长按（E）+ 种子化随机 | 用例：空中不接地面招；倒地追击只在目标处于 `KnockdownGrounded` 时成立；同种子同帧率逐 tick 一致 |
 | 1.7 | 导入素材（连 `.meta`，保留 guid）+ 玩家整套招式表 | 逐招手感与 BeatEmUp 对拍；`GameMain.targetFrameRate` 30/60/120 三档行为一致 |
@@ -125,6 +125,9 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 1. **敌兵贴图在这份副本里是缺的**：`EnemyIdle/Punch/Walk.anim` 引用的纹理 guid `afc72b9957692184e9d5b329a78409f3` 在 BeatEmUp 的整个 `Assets` 下**没有 .meta**，也就是说当前敌兵没有美术。要么找回原始素材包，要么 Step 2 先用灰盒方块顶着。
 2. **授权**：BeatEmUp 仓库里**没有任何 LICENSE 文件**，只有 `README.md` 的「致谢」写着素材与代码原始版权归 Osarion / MoolTools（作者 Mikel Fick）所有、该仓库仅为二次开发工作副本。把素材复制进本工程前，先确认手上的购买授权允许这种使用。
 3. **导入方式**：必须连 `.meta` 一起复制以保留 guid，否则 `Player.controller`、`.anim`、预制体内部的引用会断。本工程**不需要**装 URP。
+   已做（切片 1.4 的前置）：`Animation/`（41 条 clip）与 `Sprites/` 已连 `.meta` 落到 `Assets/Arts/BeatEmUp/`，
+   两边 guid 零冲突，导入后逐字节与源片一致（Unity 没重序列化，所以曲线里的精灵引用一个没丢）。
+   `Audio/`（9.5 MB）与 `Prefabs/` 还没导：前者等 1.5 的 cue 派发（不池化就不该引进来），后者只当文本读过规格。
 
 ---
 
@@ -180,10 +183,33 @@ Play Mode 稳态九个分区全部 `avg=0 max=0`（含新的 `SampleOverlaps`，
 
 `Doc/issue/hit-overlap-physics-step-granularity.md` 随本切片删除。
 
+### 切片 1.4 `.anim` → 表 的导出工具 · 已实施 · 2026-10
+
+工具在 `Assets/Editor/AnimClipToActionTable.cs`，菜单 `Tools → ACT → 导出 BeatEmUp 帧数据草稿（.anim → 表）`，产出 `Doc/plan/beatemup-anim-dump.md`（335 行，41 条片子逐条：时长、判定盒窗口、精灵可见窗口、盒子位置/缩放轨迹、cue、可疑值）。**输出是草稿不是成品表**——伤害/取消标签/指令/受击阶段在源 clip 里根本没有，那些是玩法决定，由 1.7 填。
+
+换算公式（写在工具头部注释和草稿开头，因为 1.7 填表时没人能独立验它）：本工程第 n 拍覆盖 [(n-1)/60, n/60)，clip 是 60fps 的 0-based ⇒ clip 第 f 帧 = 本工程第 f+1 拍；表里的窗口是「跨过就算数」（生效 = min..max+1）⇒ **min = 抬起帧 + 1，max = 落下帧 − 1**。这样生效集合正好等于源片子里盒子开着的那几帧。
+
+这条公式不是推出来的，是对着源工程的读法对出来的：`UnitActions.cs:344` 在 MonoBehaviour 的 Update 里读 `hitBox.gameObject.activeSelf`，而 Animator 在同一帧更早的阶段求值曲线，所以 clip 第 f 帧恰好在第 f 个渲染帧被读到。逐招核过：Punch1 活跃帧 4..9 → 表 [5,9]；Kick1 2..11 → [3,11]；Kick3 4..12 → [5,12]；GroundPunch 10..18 → [11,18]，四个都对得上"生效帧数相等且首帧对齐"。
+
+三处值得记的做法：
+
+- **读的是 .anim 的文本而不是 AnimationUtility**。盒子的位置/缩放是 typed 曲线（`m_PositionCurves` / `m_ScaleCurves`），Unity 6 的 AnimationUtility 只把浮点曲线暴露在 `GetCurveBindings` 里，transform 那几组没有公开读法（`GetPositionCurves` / `GetPositionCurve` 都不存在）；而 `m_EditorCurves` 里还有一份编辑器副本，混着读会把每条曲线数两遍。按文本一次覆盖四种块。
+- **行尾必须规范化**：`.anim` 是 LF 而 `.prefab` 是 CRLF，按整行匹配的查找在 CRLF 上全都命中不了，失败还只是安静地留空。
+- **`{x: , y: , z: }` 只在本对花括号内取数**。早期写法是"跳过 `key: {` 之后固定几个字符"，切歪一个字符就把 `m_LocalScale` 的 x 当成 `m_LocalPosition` 的 x——数值看着正常，谁也不会发现。同类问题还有 SpriteRenderer 块里第一个 `guid:` 是内置材质（解析成 unity_builtin_extra），必须从 `m_Sprite:` 那行往后找。
+
+顺带把源工程那只唯一 HitBox 的规格算成了本工程的 3D 盒子：局部位置 (0.57, 0.48, 0)、`SpriteRenderer.size` (0.64, 0.64) × localScale.x 1.2342 ⇒ **size (0.7899, 0.64, 0.5)**，厚度 0.5 米来自源工程 `targetInZRange(0.5)`。这条正是 1.5「盒子轨迹」的输入。
+
+分类结果：41 条里 15 条带判定盒窗口、20 条带 cue、**可疑值 0 条**。两条倒地片子（`PlayerKnockDownGrounded`/`_Up`）的 m_IsActive 全程是 0——源片子里这条动作本来就打不着人，工具把它记成"备注"而不是"可疑"，免得把真实玩法当成数据缺失去追。敌兵三条片子（EnemyIdle/Punch/Walk）没有盒子曲线：它们的攻击靠 `AttackData.inflictor` 生成物结算，归 Step 2 处理。
+
+同时修掉了三处"动画全是 30 帧 authored"的旧断言（`LogicClock.cs:10`、`ActionDurationDumper` 的警告文案、`refactor.md` 第 165 行）：BeatEmUp 的 clip 是 60 帧 authored，窗口可以落在任意帧。仍成立的是"两种都是 1/60 秒的整数倍，所以帧数没有取整误差"。
+
+**验证**：编辑期用例 20/20 全绿（本切片没动运行期代码）；工具产出的窗口逐招与曲线原文核过（上面四例）。
+
+
 ### 顺带：恢复闸门
 
 回归时撞上 `RepeatedHitRefreshesHitstopWithoutChangingAction` 在 HEAD 上就是红的（做过 A/B：摘掉移植改动重跑，同样红，与本次工作无关）。根因是用例从第 449 行起把被冻住的拍也算进了前进数，四处期望常数各多一拍；实现本身自洽、且符合 `refactor.md` 写的"取较大者只是把剩余硬重置满"，所以只改测试常数。九个用例恢复全绿，后面顿挫相关的切片（1.3、1.5、1.9）才有闸门可用。
 
 ---
 
-相关文档：`refactor.md`（Phase 3/4 随本期落地）、`../decision/0001-帧数据真源在表不在动画.md`、`../decision/0002-HD-2D世界约定.md`
+相关文档：`refactor.md`（Phase 3/4 随本期落地）、`../decision/0001-帧数据真源在表不在动画.md`、`../decision/0002-HD-2D世界约定.md`、`beatemup-anim-dump.md`（切片 1.4 由工具生成的帧数据草稿）

@@ -53,7 +53,7 @@ public static class ActionDurationDumper
             float raw = sec / LogicClock.Tick;
             int frames = Mathf.RoundToInt(raw);
             string note = Mathf.Abs(raw - frames) > 0.02f
-                ? "  ⚠不是60的整数倍，这条clip不是30帧authored的，取整会丢精度"
+                ? "  ⚠不是 1/60 秒的整数倍（30帧或60帧authored的都会是），取整会丢精度"
                 : "";
             //表里的durationFrames是运行期唯一的时长真源，美术重导clip之后必须跟着改，差一帧所有窗口就全偏
             string drift = info.durationFrames == frames
