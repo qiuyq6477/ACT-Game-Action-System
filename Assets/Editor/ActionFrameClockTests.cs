@@ -445,7 +445,9 @@ public class ActionFrameClockTests
         Tick();
         Assert.AreEqual(frameBefore + 2, _action.CurrentFrame, "7拍满了，第8拍才继续");
 
-        //取较大者而不是叠加：打到一半再挨一记，只是把剩余硬重置满，不会越打越长
+        //取较大者而不是叠加：打到一半再挨一记，只是把剩余硬重置满，不会越打越长。
+        //拍数算式：ApplyHitStop(N) 冻住的是随后的 N 拍，第 N+1 拍才前进——所以下面那两拍（消耗掉的部分）
+        //同样一帧都不走，第二次 ApplyHitStop(7) 之后还要再冻满 7 拍，中间时钟总共只前进过一次（就是第446行那次）
         _action.ApplyHitStop(7);
         Tick();
         Tick();
@@ -453,12 +455,12 @@ public class ActionFrameClockTests
         for (int i = 0; i < 7; i++)
         {
             Tick();
-            Assert.AreEqual(frameBefore + 3, _action.CurrentFrame, "第二次命中之后的7拍同样冻着（没叠成14）");
+            Assert.AreEqual(frameBefore + 2, _action.CurrentFrame, "第二次命中之后的7拍同样冻着（没叠成14）");
         }
         Tick();
-        Assert.AreEqual(frameBefore + 4, _action.CurrentFrame, "第二次命中也没把硬直累加");
+        Assert.AreEqual(frameBefore + 3, _action.CurrentFrame, "第二次命中也没把硬直累加");
 
-        //短的一记不能把长的截掉：还剩5拍时来一个2拍的，仍然是等到原来那7拍走完
+        //短的一记不能把长的截掉：7拍冻掉3拍之后还剩4拍，这时来一个2拍的，仍然要等那4拍走完
         _action.ApplyHitStop(7);
         Tick();
         Tick();
@@ -467,9 +469,9 @@ public class ActionFrameClockTests
         for (int i = 0; i < 4; i++)
         {
             Tick();
-            Assert.AreEqual(frameBefore + 5, _action.CurrentFrame, "2拍的那记不该把剩下的5拍提前放行");
+            Assert.AreEqual(frameBefore + 3, _action.CurrentFrame, "2拍的那记不该把剩下的4拍提前放行");
         }
         Tick();
-        Assert.AreEqual(frameBefore + 6, _action.CurrentFrame, "7拍走满才继续");
+        Assert.AreEqual(frameBefore + 4, _action.CurrentFrame, "7拍走满（3+4）才继续");
     }
 }
