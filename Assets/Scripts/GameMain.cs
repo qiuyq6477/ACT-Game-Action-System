@@ -78,11 +78,12 @@ public class GameMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→命中结算→计时与移动→同轨推挤。
+    /// 推进一个逻辑帧，顺序是钉死的：输入→动作→判定盒→命中结算→计时与移动。
     /// 以前这五家各写各的Update，谁先谁后由Unity决定，同一份代码换台机器就会差一帧。
     /// 命中结算放在动作推进之后，所以一记打击派生出来的动作要等下一个逻辑帧才生效（约16.7毫秒）
-    /// 同轨推挤放在最后：所有角色都写完了本帧的位置才推得准，而且它只动 z，
-    /// 地面探测算出的 groundY 与 z 无关，所以推完不用再探地
+    /// 同轨推挤（`CharacterObj.SeparateLanes`）2026-10-13 摘掉了：玩家走到敌兵旁边就把人蹭走，
+    /// 而敌兵今天还不会自己走位（prefab 上 controller=0），观感就是推土机。
+    /// 函数和它的用例都留着，接回来只需要一行调用——接的时候要先定谁让路（今天是一人一半）
     /// </summary>
     private void TickAll()
     {
@@ -102,8 +103,6 @@ public class GameMain : MonoBehaviour
             c.Tick();
             GcProbe.End(GcProbe.Region.CharacterTick, gcProbe);
         }
-
-        CharacterObj.SeparateLanes(_all);
     }
 
     private static void TickBoxes(CharacterObj c)
@@ -114,8 +113,15 @@ public class GameMain : MonoBehaviour
 
     private void LateUpdate()
     {
-        Vector3 baseCamPos = new Vector3(2, 2.4f, -4);
-        usingCam.transform.position = baseCamPos + player.transform.position;
+        //正交相机（见 Doc/decision/0002 的 amendment）：纵深不再改变屏幕上的尺度，
+        //同轨判定与眼睛读到的画面才一致，像素精灵将来才有 PixelPerfectCamera 可用。
+        //base.y 与 pitch 是绑在一起的：脚下在画面里的高度 = -base.y×cos(pitch) + (角色z - base.z)×sin(pitch)，
+        //按 pitch=25°、size=2.5 反算出 2.75，角色就还是原来那个占比。
+        //z 不跟角色：跟着一起平移等于屏幕上原地不动；正交下可见纵深带很宽（≈ 2×size/sin(pitch) 米），
+        //可玩车道纯由场景里的 LevelBounds 定，不再是镜头约束
+        Vector3 baseCamPos = new Vector3(2, 2.75f, -4);
+        usingCam.transform.position = new Vector3(baseCamPos.x + player.transform.position.x,
+            baseCamPos.y + player.transform.position.y, baseCamPos.z);
     }
 
     /// <summary>

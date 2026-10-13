@@ -14,8 +14,9 @@ using UnityEngine;
 /// 2. 连招窗口在边界上是精确的——早一帧接不上、晚一帧接不上，中间每一帧都接得上；
 /// 3. 顿挫（硬直）期间判定盒保持不动，但Cancel照常可用；
 /// 4. 渲染帧率到逻辑帧率的换算，以及RootMotion位移，都只取决于帧号而不取决于时间。
-/// 5. 纵深车道（BeatEmUp 移植新增）：z 只由竖轴驱动、不随正反手镜像，且与横向共用同一个
-///    inputAcceptance；RootMotion 的第四个参数缺省为 0（老表逐项不变）；同轨推挤只动 z，
+/// 5. 纵深车道与八向移动（BeatEmUp 移植新增）：z 只由竖轴驱动、不随正反手镜像，且与横向共用同一个
+///    inputAcceptance；表里 [8]/[2] 各有自己的走位动作，斜向合速度被归一到与直行相同；
+///    RootMotion 的第四个参数缺省为 0（老表逐项不变）；同轨推挤只动 z，
 ///    重合时的方向由数组顺序定死。
 ///
 /// 用例的宿主是隐藏的一个Player克隆（HideFlags.DontSaveInEditor），跑完连根销毁，
@@ -496,44 +497,131 @@ public class ActionFrameClockTests
     }
 
     /// <summary>
-    /// 正手：按着前进与屏幕上方十拍，纵深走满 10×每拍位移（屏幕上方 = 远离镜头 = +z），横向仍按原公式走。
-    /// 【为什么要连方向键一起按】：表里 BoxingMoveForward 的 autoTerminate 是 true，
-    /// 没有匹配的 Forward 指令时第一拍就跳回 BoxingStand（acceptance 0），纵深只会走一拍。
-    /// 【为什么拆成三个用例而不是一个用例走三段】：输入历史保留 72 个逻辑帧，同一个 rig 里
-    /// 换了正反手，上一段按过的键还会继续参与指令匹配，第二段的期望值会被它污染
+    /// 单按竖轴就得从站立换进纵深走位动作——这两条钉的是"表里 [8]/[2] 有消费者"这件事本身
+    /// （改造前一条都没有，所以按 W/S 一动不动）。
+    /// 【换动作那一拍不位移】：CalculateInputAcceptance 用的是这一拍开头的当前动作（BoxingStand，倍率 0），
+    /// 所以走位晚一拍才生效，这是时钟的既有语义，不是这次的回归。
+    /// 【为什么 ↑ 和 ↓ 各占一条用例】：输入历史保留 72 个逻辑帧，同一个 rig 里接着按另一根竖轴时，
+    /// 上一段那一下还在回看窗里，两条纵深动作会同时成为候选，期望值就被污染了
     /// </summary>
     [Test]
-    public void DepthMovesAwayFromCameraWhenFacingRight()
+    public void UpKeyAloneReachesFarWalkFromStanding()
+    {
+        StartAction("BoxingStand");
+        Vector3 from = _rig.transform.position;
+        TickWhole(KeyMap.Up);
+        Assert.AreEqual("BoxingMoveFar", _action.CurrentAction.id, "只按屏幕上方也要换进纵深走位动作");
+        Assert.AreEqual(from.z, _rig.transform.position.z, 1e-6f, "换动作那一拍的接受度还是 0，不该有位移");
+    }
+
+    [Test]
+    public void DuckKeyAloneReachesNearWalkFromStanding()
+    {
+        StartAction("BoxingStand");
+        TickWhole(KeyMap.Duck);
+        Assert.AreEqual("BoxingMoveNear", _action.CurrentAction.id, "只按屏幕下方换进另一条纵深走位动作");
+    }
+
+    /// <summary>
+    /// 正手：按着屏幕上方十拍，纵深走满 10×每拍位移（屏幕上方 = 远离镜头 = +z）。
+    /// 【纯纵深不参与归一化】：意图长度就是 depthSpeedRate（0.8），本来就小于 1，ClampMagnitude 原样放行，
+    /// 每拍位移与改造前逐项相同。
+    /// 【改造前这条要连方向键一起按】：表里当时没有 [8] 的消费者，只按竖轴第一拍就跳回 BoxingStand
+    /// （acceptance 0），纵深只会走一拍——现在那个补丁不需要了
+    /// </summary>
+    [Test]
+    public void DepthMovesAwayFromCameraWhenHoldingUp()
     {
         float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
-        float walkPerTick = _character.moveSpeed * LogicClock.Tick;
 
-        StartAction("BoxingMoveForward");
+        StartAction("BoxingMoveFar");
         Vector3 from = _rig.transform.position;
-        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Up);
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Up);
         Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕上方十拍，纵深必须走满 10×每拍位移");
-        Assert.AreEqual(from.x + 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "横向仍按原来的公式走，纵深项不该掺进去");
+        Assert.AreEqual(from.x, _rig.transform.position.x, 1e-6f, "只按竖轴的时候横向不许漂");
     }
 
     /// <summary>
     /// 反手（面朝左）：纵深仍然是 +z，只有横向翻成 -x。
     /// 这条钉的是 Doc/decision/0002 里"纵深是屏幕空间轴、永不镜像"那句——
     /// NatureMove 里横向那项乘了 Inversed 的符号，纵深项没乘。
-    /// 写反了角色一转身就跑进错误的车道，而这种错肉眼只看得出"手感怪"，是最难查的一类
+    /// 写反了角色一转身就跑进错误的车道，而这种错肉眼只看得出"手感怪"，是最难查的一类。
+    /// 【为什么拆成独立用例】：输入历史保留 72 个逻辑帧，同一个 rig 里换了正反手，
+    /// 上一段按过的键还会继续参与指令匹配，下一段的期望值会被它污染
     /// </summary>
     [Test]
     public void DepthDoesNotMirrorWhenFacingLeft()
     {
-        float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
-        float walkPerTick = _character.moveSpeed * LogicClock.Tick;
+        float gain = _character.moveSpeed * LogicClock.Tick;
+        Vector2 intent = Vector2.ClampMagnitude(new Vector2(1f, _character.depthSpeedRate), 1f);
 
         _character.Inversed = true;
         StartAction("BoxingMoveForward");
         Vector3 from = _rig.transform.position;
         //反手时物理上按的是 Backward，经 GetKeyInput 镜像成大脑血管里的"前进"，所以动作照样能自取消撑住
         for (int i = 0; i < 10; i++) TickWhole(KeyMap.Backward, KeyMap.Up);
-        Assert.AreEqual(from.z + 10 * perTick, _rig.transform.position.z, 1e-5f, "反手时纵深不镜像，符号不能翻");
-        Assert.AreEqual(from.x - 10 * walkPerTick, _rig.transform.position.x, 1e-5f, "反手时前进应当往 -x 走");
+        Assert.AreEqual(from.z + 10 * intent.y * gain, _rig.transform.position.z, 1e-5f, "反手时纵深不镜像，符号不能翻");
+        Assert.AreEqual(from.x - 10 * intent.x * gain, _rig.transform.position.x, 1e-5f, "反手时前进应当往 -x 走");
+    }
+
+    /// <summary>
+    /// 斜向等速：两根轴都按着的时候合速度仍然等于 moveSpeed，不再因为对角而走快 1.28 倍。
+    /// 期望值现算而不是写死 0.78——那种数一改 depthSpeedRate 就假绿了
+    /// </summary>
+    [Test]
+    public void DiagonalWalkSpeedIsNormalized()
+    {
+        float gain = _character.moveSpeed * LogicClock.Tick;
+        Vector2 intent = Vector2.ClampMagnitude(new Vector2(1f, _character.depthSpeedRate), 1f);
+
+        StartAction("BoxingMoveForward");
+        Vector3 from = _rig.transform.position;
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Up);
+        Assert.AreEqual(from.x + 10 * intent.x * gain, _rig.transform.position.x, 1e-5f, "斜向的横向分量按归一化后的比例走");
+        Assert.AreEqual(from.z + 10 * intent.y * gain, _rig.transform.position.z, 1e-5f, "斜向的纵深分量按归一化后的比例走");
+        float walked = Mathf.Sqrt(Mathf.Pow(_rig.transform.position.x - from.x, 2) +
+                                 Mathf.Pow(_rig.transform.position.z - from.z, 2));
+        Assert.AreEqual(10 * gain, walked, 1e-4f, "斜向合速度必须等于直行速度，八向等速");
+    }
+
+    /// <summary>
+    /// 斜向时选中的必须是带横向成分的那条动作（动画才对得上），而不是两条纯纵深动作。
+    /// 按住两轴时 InputToCommand 会同时登记单轴记录和斜键记录，"只按 ↑"和"↑+→"在 keySequence
+    /// 里根本区分不开，只能靠表里纵深行的 priority = -1 把平手定死。
+    /// 有人重排表或者删掉那个 -1，这两条就会红。
+    /// 【↗ 和 ↖ 各占一条】：同一个 rig 里连着测两段，前一段按过的方向键还在 72 帧的历史里，
+    /// 两条横向动作会同时成为候选（表里靠前的必胜），第二段的期望值就被污染了
+    /// </summary>
+    [Test]
+    public void ForwardDiagonalWalkPicksForwardAction()
+    {
+        StartAction("BoxingStand");
+        TickWhole(KeyMap.Forward, KeyMap.Up);
+        Assert.AreEqual("BoxingMoveForward", _action.CurrentAction.id, "↗ 要用前进的走位动作");
+    }
+
+    [Test]
+    public void BackwardDiagonalWalkPicksBackwardAction()
+    {
+        StartAction("BoxingStand");
+        TickWhole(KeyMap.Backward, KeyMap.Up);
+        Assert.AreEqual("BoxingMoveBackward", _action.CurrentAction.id, "↖ 要用后退的走位动作");
+    }
+
+    /// <summary>
+    /// 后退不再减速：表里 BoxingMoveBackward 的 inputAcceptance 从 0.7 提成了 1，
+    /// 八向等速不能留一个"后退例外"的口子
+    /// </summary>
+    [Test]
+    public void BackwardWalkNoLongerSlowsDown()
+    {
+        float walkPerTick = _character.moveSpeed * LogicClock.Tick;
+
+        StartAction("BoxingMoveBackward");
+        Vector3 from = _rig.transform.position;
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Backward);
+        Assert.AreEqual(from.x - 10 * walkPerTick, _rig.transform.position.x, 1e-5f,
+            "后退应当和前进同速（倍率 0.7 已经取消）");
     }
 
     /// <summary>
@@ -544,10 +632,11 @@ public class ActionFrameClockTests
     {
         float perTick = _character.moveSpeed * _character.depthSpeedRate * LogicClock.Tick;
 
-        StartAction("BoxingMoveForward");
+        StartAction("BoxingMoveNear");
         Vector3 from = _rig.transform.position;
-        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Forward, KeyMap.Duck);
+        for (int i = 0; i < 10; i++) TickWhole(KeyMap.Duck);
         Assert.AreEqual(from.z - 10 * perTick, _rig.transform.position.z, 1e-5f, "按住屏幕下方应当往镜头这侧走");
+        Assert.AreEqual(from.x, _rig.transform.position.x, 1e-6f, "只按竖轴的时候横向不许漂");
     }
 
     /// <summary>
@@ -568,7 +657,7 @@ public class ActionFrameClockTests
 
     /// <summary>
     /// GoStraight 的第四个参数是纵深米数。【老表只填到第三个参数，缺省必须是 0】——
-    /// 现有 13 条动作的逐帧位移一个都不许变，否则第 6 条用例钉住的手感就作废了
+    /// 现有 15 条动作的逐帧位移一个都不许变，否则第 6 条用例钉住的手感就作废了
     /// </summary>
     [Test]
     public void GoStraightCarriesDepthOnlyWhenTheFourthParamIsGiven()

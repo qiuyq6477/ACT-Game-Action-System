@@ -15,7 +15,7 @@
 | Unity 版本 | `6000.3.10f1` | `6000.3.10f1`（相同） |
 | 渲染管线 | Built-in RP | 装了 URP 17.3 但**没启用**（`ProjectSettings/GraphicsSettings.asset:40` 的 `m_CustomRenderPipeline: {fileID: 0}`），精灵实际走内置 `Sprites/Default` |
 | 角色 | 3D 骨骼模型（SkinnedMesh + Avatar） | 逐帧像素 PNG（`PlayerSpriteSheet.png` 1024×512、106 张子图、PPU 50） |
-| 相机 | 透视（`orthographic: 0`） | 正交 + `PixelPerfectCamera` |
+| 相机 | 正交（`orthographic: 1`、size 2.5 —— 2026-10-13 从透视改的，理由见 `../decision/0002` 的"修订"） | 正交 + `PixelPerfectCamera` |
 | 世界轴 | X 横向、**Y 高度**（重力与地面探测）、Z 纵深 | X 横向、**Y 纵深车道**、跳跃高度是"贴图飞起来"再靠 `CapsuleCollider2D.offset.y` 把碰撞体拽回地面 |
 | 时基 | 自建 60Hz 整型逻辑帧时钟，Animator 是被时钟奴役的从属 | Unity 的 `Update/FixedUpdate` + `Time.time` + 协程 + `Time.timeScale` 慢镜头 |
 | 招式数据 | `Resources/GameData/Action.json` 一张表，窗口存绝对帧号 | 预制体内联的 `AttackData` + **画在 `.anim` 曲线里的命中帧** + 6 个动画事件 |
@@ -132,7 +132,7 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 
 1. **真源迁移是单向门**：表一旦成为真源，改 `.anim` 就必须重跑导出工具。缓解：工具做成 `Tools/ACT` 菜单，并把"表里的窗口 vs clip 实际曲线"变成 EditMode 断言。
 2. **1.3 判定根换血**是本期最大风险：必须先写用例再改实现，否则"看起来一样"的漏判会静默留在游戏里。
-3. HD-2D 的镜头标定（PPU 50 / 透视 FOV / 车道远近缩放）决定像素会不会发虚，需要一次专门对拍，**结论有可能反过来要求镜头改回正交**。
+3. HD-2D 的镜头标定（PPU 50 / 透视 FOV / 车道远近缩放）决定像素会不会发虚。**已定：投影改正交**，同轨的可读性与 `PixelPerfectCamera` 两个理由一起压过了透视的氛围感，推导与三个数字见 `../decision/0002` 的"修订"一节；size 仍要等 1.7 的像素对拍按参考分辨率重算。
 4. BeatEmUp 的"下一键随时采样、动画结束才消费"与本工程的 `validInFrames` 回看窗**语义不完全等价**，对拍时可能发现手感偏移——那时应该改表，不该改代码。
 5. 同屏 20+ 敌兵时 `SyncTransforms` + 每盒一次 overlap 的开销待实测（`GcProbe` 只量分配不量 CPU）。
 6. BeatEmUp 的敌兵与玩家**共用同一个 AnimatorController**（`Enemy.prefab` 的 `m_Controller` GUID 与 `Player.controller` 相同，敌兵招式表里填的就是玩家状态名）⇒ 做外观/招式不同的 Boss 要复制控制器并同步状态名，而"所有角色共用一张动作表"的前提一旦动摇，`GameData.ActionsOfCatalog` 的倒排索引必须下移到 `ActionController`（`GameData.cs:64-66`）。
@@ -149,14 +149,29 @@ BeatEmUp 用 `localRotation = Euler(0,180,0)` 翻转贴图；本工程 `ActionCo
 
 **没有新增 KeyMap**——这是与本文件第三节原方案的一处有意偏离，原因是发现竖轴可以直接复用：竖轴采样本来产出 `KeyMap.Up`(8) / `KeyMap.Duck`(2)，而这两个值①本来就不参与 `GetKeyInput` 的正反手镜像（正是纵深需要的性质），②表里用它们的招式（TwinKick 的 `[2,3,6,101]`）因此照常可搓，语义变成"从近侧车道绕过来"。再加一对 `DepthFar/DepthNear` 只会让同一根轴有两套名字。
 
-落地清单：`NatureMove` 的 z 项 = `(Up?1:Duck?-1:0) × moveSpeed × depthSpeedRate × MoveInputAcceptance × Tick + RootMotionMove.z`，横向那个 `Inversed` 符号不乘它；`GoStraight` 增加可选 `param[3]`（纵深米数，缺省 0），13 条老表项的逐帧位移逐项不变；`CharacterObj.SeparateLanes` 成为 `TickAll` 的第六拍（只动 z，完全重合时方向由数组顺序定死以保证确定性）；新建 `LevelBounds`，为 null 时不夹，所以老场景与编辑期用例的行为一项没变。
+落地清单：`NatureMove` 的 z 项 = `(Up?1:Duck?-1:0) × moveSpeed × depthSpeedRate × MoveInputAcceptance × Tick + RootMotionMove.z`，横向那个 `Inversed` 符号不乘它；`GoStraight` 增加可选 `param[3]`（纵深米数，缺省 0），13 条老表项的逐帧位移逐项不变；`CharacterObj.SeparateLanes` 成为 `TickAll` 的第六拍（只动 z，完全重合时方向由数组顺序定死以保证确定性；这一拍 2026-10-13 起摘掉了，见切片 1.2b）；新建 `LevelBounds`，为 null 时不夹，所以老场景与编辑期用例的行为一项没变。
 
 **验证**：`ActionFrameClockTests` 从 9 条加到 15 条全绿。其中两条是踩出来的，值得留给后来人：
 
-- 只按竖轴测不出纵深——`BoxingMoveForward` 的 `autoTerminate` 是 true，没有匹配的 Forward 指令时第一拍就跳回 `BoxingStand`（acceptance 0），纵深只走一拍。用例必须连方向键一起按。
+- 只按竖轴测不出纵深——`BoxingMoveForward` 的 `autoTerminate` 是 true，没有匹配的 Forward 指令时第一拍就跳回 `BoxingStand`（acceptance 0），纵深只走一拍。用例必须连方向键一起按。**（已消解：那条补丁遮住的其实是"表里没有人消费竖轴"，见下面的切片 1.2b）**
 - 三段不能共用一个 rig：输入历史保留 72 个逻辑帧，中途换正反手后上一段按过的键还会参与指令匹配，把下一段的期望值污染掉（实测少走两拍）。所以拆成三个独立用例。
 
 Play Mode 稳态（约 30 秒、三个窗口）八个分区全部 `avg=0 max=0`，含新增的 `LaneSeparate`（n=172），自检 1056B 证明计数器是活的。启动那两个窗口里的非零都是常驻 List 的头几次扩容（`max=1056` 正好是 64 个 16 字节的 `KeyInputRecord` 加对象头）。
+
+### 切片 1.2b 八向移动：竖轴终于有消费者 · 已实施 · 2026-10
+
+1.2 只接通了管道（采样→意图→z 位移→同轨推挤→边界），**表里没有任何动作被 `[8]`/`[2]` 触发**，而 `CalculateInputAcceptance` 只对配了 `inputAcceptance` 的动作给倍率——`BoxingStand` 是空数组，倍率 0。于是站在原地按 W/S，纵深位移被乘成 0：功能上"上下移动"根本不存在，斜向同理。这一片补的就是那最后一格，仍然零新素材、逻辑层只动 `NatureMove` 一个函数。
+
+落地清单：
+
+- **表**：新增 `BoxingMoveFar`（`commands [[8]]`、`animKey BoxingForward`）和 `BoxingMoveNear`（`commands [[2]]`、`animKey BoxingBackward`），其余字段逐条照抄 `BoxingMoveForward`（含 `autoTerminate` ⇒ 松开所有方向键那一拍自动回 `BoxingStand`），两行的 `priority` 填 **-1**。`BoxingMoveBackward.inputAcceptance.rate` 0.7 → 1（后退不再减速，八向等速不能留例外）。
+- **为什么是负 priority，而不是把 `[8]`/`[2]` 并进横向两行**：按住两轴时 `InputToCommand` 会**同时**登记单轴记录（6/4/8/2）和斜键记录（9/3/7/1），所以"只按 ↑"和"↑+→"在 `keySequence` 里区分不开，平手只能靠打分定。而把竖轴塞进横向行，就得给 `BoxingMoveBackward` 抬 `action.priority`，那会扩散到 `TwinKick`(1)/`TwinKickAutoCombo`(2)/`Hurt`(10) 那条竞争序列里去。仲裁规则本身见 `Assets/Scripts/AGENTS.md`，两个已知后果见 `../issue/walk-action-swallows-attack-input.md`、`../issue/turn-back-is-dead-code.md`。
+- **归一化**：`NatureMove` 先把无量纲的意图 `(±1, ±1 × depthSpeedRate)` 用 `Vector2.ClampMagnitude(…, 1)` 夹一遍，**再**乘 `moveSpeed × MoveInputAcceptance × Tick`。纯横 1.0、纯纵 0.8（透视压缩的语义原样保留）、斜向从 √1.64=1.28 夹回 1.0。夹在乘之后长度只剩 0.066，永远够不到 1，归一化会静默失效；`RootMotionMove` 留在夹之外。
+- **镜头**：`GameMain.LateUpdate` 不再让相机跟 z（跟着就等于原地不动），并把投影从透视换成**正交**（size 2.5、pitch 25°、base.y 2.75）。理由和这三个数的推导在 `../decision/0002` 的"修订"一节，这里只留一句结论：透视下"1 米车道位移"的屏幕位移只有 sin(10°)=0.174，而且远车道还会缩小，眼睛读不出"我们同不同轨"；正交下这个位移对每条车道都相同。不跟 z 是静态丢弃、不是插值，不吃渲染帧率。
+- **摘掉的一拍**：`CharacterObj.SeparateLanes`（同轨推挤）从 `TickAll` 的顺序里去掉了。原因是敌兵今天还不会自己走位（prefab 上 `controller: 0`），玩家一走近就把人蹭走，观感像推土机。函数、`laneRadius` 和用例 `SeparateLanesPushesAlongZOnlyAndIsDeterministic` 全部留着，接回来是一行调用——接的时候要重新定"谁让路"，今天是两人各推一半、没有重量差。
+- **边界**：`LevelBounds` 第一次真的进了场景（`Assets/Scenes/GameMain.unity`，手写的 GameObject），`min = (-20, -1.5)`、`max = (20, 1.5)`，即 3 米 ≈ 5 条车道（车道宽 = 两个 `laneRadius` = 0.6 米）。正交的可见纵深带 ≈ 2×size / sin(pitch) = 11.8 米，比车道带宽得多，**所以这个范围是玩法决定的，不再受镜头约束**——透视那套"近侧只剩 1.56 米余量"的推导随投影一起作废。
+
+**验证状态**：`ActionFrameClockTests` 15 → 21 个用例。三条纵深用例撤掉了"必须连横向键一起按"的补丁、改成只按竖轴并新增"横向不许漂"的断言；新增斜向等速（期望值用 `Vector2.ClampMagnitude` 现算，不写死 0.78）、斜向落到哪条横向动作（↑+→ 和 ↑+← 各一条）、竖轴从站立进纵深动作（↑ 和 ↓ 各一条，因为 72 帧的输入历史会让上一段按过的键污染下一段）、后退不再减速。Play 模式已确认编译通过、八向都能走（2026-10-13）；**但这 21 条 EditMode 用例还没有跑绿的记录**——改动做完时 Unity 编辑器正开着工程，不能起第二个实例抢 project lock，Test Runner 里跑完再回来改这句。正交那三个数（size / pitch / base.y）同样要 Play 模式眼校，判据是"斜穿整个车道带，画面里大约挪四分之一屏高，角色在 z 的两端都不出画"。
 
 ### 顺带：恢复闸门
 

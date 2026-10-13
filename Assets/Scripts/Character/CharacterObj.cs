@@ -103,7 +103,8 @@ public class CharacterObj : MonoBehaviour
 
     /// <summary>
     /// 纵深（车道）移动速度相对 moveSpeed 的比例。
-    /// 纵深位移在屏幕上被透视压缩过，1:1 会显得比横向快；BeatEmUp 的原版把输入的 y 乘 0.8，这里沿用
+    /// 正交下它不再补偿透视（车道的屏幕位移只由 pitch 压缩，那是镜头的事），剩下的作用就是手感——
+    /// BeatEmUp 的原版把输入的 y 乘 0.8，这里沿用；斜向归一化用的也是这个值，所以改它八向仍然等速
     /// </summary>
     public float depthSpeedRate = 0.8f;
 
@@ -133,15 +134,20 @@ public class CharacterObj : MonoBehaviour
     {
         long gcProbe = GcProbe.Begin(GcProbe.Region.NatureMove);
         //moveSpeed是米/秒、_curWeight是米/逻辑帧累加出来的速度，都只在算位移这一处乘Tick
-        //纵深项不乘 Inversed 的符号：那是屏幕空间轴，跟角色朝哪边无关
-        float depthMove = (WishToMoveFar ? 1f : WishToMoveNear ? -1f : 0f) *
-                          moveSpeed * depthSpeedRate * action.MoveInputAcceptance * LogicClock.Tick;
+        //八向等速：先夹无量纲的意图，再乘速率。乘完再夹的话长度只剩0.066米，永远够不到1，
+        //归一化静默失效。两轴都松开时长度是0，ClampMagnitude内部先比sqrMagnitude所以原样返回，
+        //自己写成v/m就除出NaN了。Vector2是托管struct，不装箱，本分区仍然0 B/帧
+        float hx = WishToMoveForward ? 1f : WishToMoveBackward ? -1f : 0f;
+        float hz = (WishToMoveFar ? 1f : WishToMoveNear ? -1f : 0f) * depthSpeedRate;
+        Vector2 intent = Vector2.ClampMagnitude(new Vector2(hx, hz), 1f);
+        float gain = moveSpeed * action.MoveInputAcceptance * LogicClock.Tick;
+        //纯横走满1.0、纯纵深走depthSpeedRate（透视压缩的语义原样保留）、斜向从1.28夹回1.0。
+        //纵深项不乘Inversed的符号：那是屏幕空间轴，跟角色朝哪边无关。
+        //RootMotion是作者写好的位移，不参与归一化，留在夹之外
         Vector3 moved = new Vector3(
-            ((WishToMoveForward ? (moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) :
-                WishToMoveBackward ? (-moveSpeed * action.MoveInputAcceptance * LogicClock.Tick) : 0) + action.RootMotionMove.x) *
-            (Inversed ? -1 : 1),
+            (intent.x * gain + action.RootMotionMove.x) * (Inversed ? -1 : 1),
             action.RootMotionMove.y - _curWeight * LogicClock.Tick,   //unity的坐标系y是反过来的
-            depthMove + action.RootMotionMove.z
+            intent.y * gain + action.RootMotionMove.z
         );
         GcProbe.End(GcProbe.Region.NatureMove, gcProbe);
         return moved;
@@ -286,6 +292,8 @@ public class CharacterObj : MonoBehaviour
     /// 同一条纵深车道上的角色互相推开，只动 z。
     /// 为什么要推：清版游戏里小兵叠成一团，既看不出还剩几个，也让"要站对齐了才打得到"这条手感失效。
     /// BeatEmUp 原版不分离，只靠 AI 各自挑车道错峰，人一多照样重影。
+    /// 【2026-10-13 起没有调用者】：GameMain.TickAll 把这一拍摘掉了——敌兵还不会自己走位，
+    /// 玩家走过去就把人蹭走像推土机。下面的时机说明是接回来时要满足的前提。
     /// 【跑在所有角色的 Move() 之后】：这里改的是 z，而地面探测只按 x/z 取脚下那一列、
     /// 算出的 groundY 与 z 无关，所以推完不必再探一次地。但关卡边界要到下一拍的 Move() 里才会重新夹住
     /// </summary>

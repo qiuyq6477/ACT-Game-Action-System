@@ -128,7 +128,7 @@
             ],
             "inputAcceptance": [{
                 "range": {"min": 0, "max": 48},
-                "rate": 0.7
+                "rate": 1
             }],
             "autoNextActionId":"BoxingStand",
             "attacks": [],
@@ -760,6 +760,118 @@
             "defensePhase":[
                 {
                     "inFrames": [{"min": 0, "max": 42}],
+                    "tag":["Hurt"],
+                    "priority":0,
+                    "tempBeCancelledTagTurnOn":[],
+                    "attackerActionChange":{
+                        "changeType":0,
+                        "param":"",
+                        "priority":0
+                    },
+                    "selfActionChange":{
+                        "changeType":0,
+                        "param":"",
+                        "priority":0
+                    }
+                }
+            ]
+        },
+        {
+            "id":"BoxingMoveFar",
+            "durationFrames":48,
+            "animKey":"BoxingForward",
+            "priority": -1,
+            "catalog":"Stand",
+            "keepPlayingAnim": true,
+            "autoTerminate": true,
+            "cancelTag":[
+                {
+                    "tag":"InitAction",
+                    "startFromFrame":0,
+                    "fadeInFrames":2
+                }
+            ],
+            "beCancelledTag":[
+                {
+                    "cancelWindowFrames": {"min": 0, "max": 48},
+                    "cancelTag":["InitAction"],
+                    "fadeOutFrames":2,
+                    "priority": 1
+                }
+            ],
+            "tempBeCancelledTag":[],
+            "commands":[
+                {
+                    "keySequence":[8],
+                    "validInFrames":1
+                }
+            ],
+            "inputAcceptance": [{
+                "range": {"min": 0, "max": 48},
+                "rate": 1
+            }],
+            "autoNextActionId":"BoxingStand",
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase":[
+                {
+                    "inFrames": [{"min": 0, "max": 48}],
+                    "tag":["Hurt"],
+                    "priority":0,
+                    "tempBeCancelledTagTurnOn":[],
+                    "attackerActionChange":{
+                        "changeType":0,
+                        "param":"",
+                        "priority":0
+                    },
+                    "selfActionChange":{
+                        "changeType":0,
+                        "param":"",
+                        "priority":0
+                    }
+                }
+            ]
+        },
+        {
+            "id":"BoxingMoveNear",
+            "durationFrames":48,
+            "animKey":"BoxingBackward",
+            "priority": -1,
+            "catalog":"Stand",
+            "keepPlayingAnim": true,
+            "autoTerminate": true,
+            "cancelTag":[
+                {
+                    "tag":"InitAction",
+                    "startFromFrame":0,
+                    "fadeInFrames":2
+                }
+            ],
+            "beCancelledTag":[
+                {
+                    "cancelWindowFrames": {"min": 0, "max": 48},
+                    "cancelTag":["InitAction"],
+                    "fadeOutFrames":2,
+                    "priority": 1
+                }
+            ],
+            "tempBeCancelledTag":[],
+            "commands":[
+                {
+                    "keySequence":[2],
+                    "validInFrames":1
+                }
+            ],
+            "inputAcceptance": [{
+                "range": {"min": 0, "max": 48},
+                "rate": 1
+            }],
+            "autoNextActionId":"BoxingStand",
+            "attacks": [],
+            "attackPhase": [],
+            "defensePhase":[
+                {
+                    "inFrames": [{"min": 0, "max": 48}],
                     "tag":["Hurt"],
                     "priority":0,
                     "tempBeCancelledTagTurnOn":[],

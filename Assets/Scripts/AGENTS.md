@@ -22,12 +22,14 @@
 - `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
 - Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
-- 六个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj` / `CharacterObj.SeparateLanes`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动→同轨推挤）。改成别处调用的顺序就要重新想一遍谁先谁后。
+- 五个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动）。改成别处调用的顺序就要重新想一遍谁先谁后。`CharacterObj.SeparateLanes` 曾经是这个顺序的第六拍，2026-10-13 摘掉了（敌兵还不会自己走位，玩家一走近就把人蹭走），接回来要重新论证它为什么排在移动之后。
+- 走位（横向和纵深都一样）要"当前动作给了 `inputAcceptance` 窗口"才动：`NatureMove` 两根轴都乘 `MoveInputAcceptance`，空数组的动作（`BoxingStand` 就是）等于把双脚钉死——"按了方向键不动"就是这么来的。新增走位动作必须 `commands`（竖轴是 `[8]`/`[2]`）和 `inputAcceptance` 一起配。八向等速靠先把无量纲意图 `(±1, ±1 × depthSpeedRate)` 过一遍 `Vector2.ClampMagnitude(…, 1)` **再**乘 `moveSpeed × acceptance × Tick`（夹在乘之后长度只剩 0.066，归一化静默失效），`RootMotionMove` 留在夹之外。
 - Unity 的按键状态每渲染帧只能 poll 一次，所以 `SampleRenderFrame()` 在时钟之外、每渲染帧一次；`Tick()` 里的判定全是整数帧号比较。模拟"某一刻按了什么"一律走 `InputToCommand.AddInput`（测试和以后的 AI、回放都从这里进）。
 - 改动窗口语义、动作时钟或顿挫，必须跑 `Assets/Editor/ActionFrameClockTests.cs`（Test Runner → EditMode）。它钉的是"第几帧判到、第几帧接得上"，这些差的都是 16.7 毫秒的零头，肉眼看不出来。
 
-## 分类索引
+## 动作表与抢动作仲裁
 
+- 抢动作打分 = `bcTag.priority + cancelTag.priority + action.priority`，**平手取 `Action.json` 数组里靠前的那条**（`ActionController` 用严格 `>`）：新增行一律追加末尾，"最弱候选"（纵深走位就是）用负 `action.priority` 定死，不许靠行位置。`bcTag.priority` 挂在**当前动作**的窗口上、对同一窗口的所有候选同等加成，所以它区分不了候选之间。两个已知后果：`Doc/issue/walk-action-swallows-attack-input.md`、`Doc/issue/turn-back-is-dead-code.md`。
 - `GameData.ActionsOfCatalog` 的倒排索引是对整张动作表建的，前提是所有角色共用同一份表（`GameMain` 把 `AllActions()` 的同一个 List 交给每个 `ActionController`）。角色一旦有了自己的动作子集，索引必须下移到 `ActionController`。
 
 ## 性能验证
