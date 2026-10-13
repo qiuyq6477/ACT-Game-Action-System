@@ -5,7 +5,7 @@
 ## 热路径（每帧执行的代码）
 
 - 每帧路径**禁止**堆分配：不许出现 `new` 数组 / `List` / 字典字面量、`string` 拼接、值类型装箱。表里的字符串一律在 `GameData.Load()` 里烘焙成数值之后再用（例：`ActionInfo.rootMotionParam`、`AttackBoxTurnOnInfo.tagMask`）。
-- 往 `ActionInfo` 及其阶段结构体里加"运行期算出来的"字段时，必须标 `[NonSerialized]` 并在 `GameData.Load()` 里赋值：`Resources/GameData/Action.json` 是策划表，不往里塞派生字段。
+- 往 `ActionInfo` 及其阶段结构体里加"运行期算出来的"字段时，必须标 `[NonSerialized]` 并在 `GameData.Load()` 里赋值：表（`Assets/Resources/GameData/ActionTable.asset`）是策划数据，不往里塞派生字段。`Assets/Tables/Snapshot/Action.json` 只是从资产导出的只读快照，改表**不要**直接改它（跑菜单 `Tools/ACT/动作表资产 → 导出 JSON 快照`）。
 - `foreach` 遍历结构体数组拿到的是拷贝，改它的成员会直接编译不过（CS1654）：改表数据就先 `ActionInfo info = source;` 拷一份再改，改数组元素（数组本身是引用）就用带索引的 `for`。
 
 ## 碰撞盒标签
@@ -17,9 +17,9 @@
 
 ## 逻辑时钟与单位
 
-- 逻辑层的"时长"一律是 `int` 逻辑帧（`durationFrames`、`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。动作内部的窗口存**绝对帧号**（`FrameRange`），判定只剩整数比较。
+- 逻辑层的"时长"一律是 `int` 逻辑帧（`durationFrames`、`freezeFrames`、`hitStunFrames`、`inFrames`、`validInFrames`、`CooldownFrames`…），不许再出现按秒累加的字段。动作内部的窗口存**绝对帧号**（`FrameRange`），判定只剩整数比较。唯一的例外是表资产本身：`Assets/Tables` 里的 `ActionAsset` 存的是**秒**（时间轴窗口按秒走），秒→帧只准在 `ActionAssetConvert.ToInfo` 里换算一次，规则见 `Assets/Tables/AGENTS.md`。
 - 一个动作的时长真源只有表里的 `durationFrames`：窗口上界、RootMotion 的线性段、CrossFade 的 offset 全以它为标尺。美术重导 clip 之后这个数必须跟着改——跑菜单 `Tools/ACT/打印动作时长` 校对（跟实际长度对不上打 ✗，顺带查空窗口和越界窗口）。
-- `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 全工程只准用两处——把"米/秒"的速率换算成每帧位移、以及步进 Animator。速率（`moveSpeed`、`weight`）仍然带秒量纲。
+- `Time.deltaTime` 只准在 `GameMain.Update` 里读一次，"该跑几个逻辑帧"的换算归 `LogicClock.TicksDue`。`LogicClock.Tick` 在**运行期**只准用两处——把"米/秒"的速率换算成每帧位移（`CharacterObj.NatureMove`）、以及步进 Animator（`ActionController`）；表与编辑器层各自只经一个别名引它一次（`ActionAssetConvert.Tick`、`ActionBoxBake.StepSec`，`ActionDurationDumper` 用它做秒↔帧打印）。除此之外任何地方写死 `1/60`、`0.02` 这类字面量，就是给这张表添第二个时基。速率（`moveSpeed`、`weight`）仍然带秒量纲。
 - Animator 是从属：`ActionController.Awake` 里 `anim.enabled = false`，只在时钟推进的那一拍被 `anim.Update(LogicClock.Tick)` 步进，硬直时两者一起不前进。**但换动作/循环那一 tick 必须额外补一次 `anim.Update(0f)`**（0 步长只求值不推时间）——否则顿挫期间根本摆不出新姿势，受击动作要等整个 hitStun 走完才露出来，打击感就这么丢掉（见 `Doc/plan/refactor.md` 的 Phase 2 实施记录）。不许再读 `GetCurrentAnimatorStateInfo` 之类的动画进度当逻辑真源，也不许再用 `anim.speed`。
 - 面向与纵深都是"逻辑一个布尔 + 表现各自落地"：面向的真源是 `InputToCommand.inversed`（输入镜像、位移符号、受力翻转三处都只用它），落地交给角色身上的 `FacingApply`——3D 模型绕 Y 转 90/270，贴在 3D 平面上的精灵只能翻 `localScale.x`（绕 Y 转 90° 会侧对镜头），逻辑层**不许**再写 `transform.eulerAngles = …90/270…`。纵深（`KeyMap.Up`/`Duck`，屏幕纵向 = 车道远近）是**屏幕空间轴，永不镜像**：`NatureMove` 里横向乘 `Inversed` 符号、纵深项不乘。
 - 五个 Tick（`InputToCommand` / `ActionController` / `AttackHitBox` / `BeHitBox` / `CharacterObj`）**不许**写 Unity 的 `Update()` 回调：由 `GameMain.TickAll()` 按固定顺序调用（输入→动作→判定盒→命中结算→计时与移动）。改成别处调用的顺序就要重新想一遍谁先谁后。`CharacterObj.SeparateLanes` 曾经是这个顺序的第六拍，2026-10-13 摘掉了（敌兵还不会自己走位，玩家一走近就把人蹭走），接回来要重新论证它为什么排在移动之后。
@@ -29,7 +29,7 @@
 
 ## 动作表与抢动作仲裁
 
-- 抢动作打分 = `bcTag.priority + cancelTag.priority + action.priority`，**平手取 `Action.json` 数组里靠前的那条**（`ActionController` 用严格 `>`）：新增行一律追加末尾，"最弱候选"（纵深走位就是）用负 `action.priority` 定死，不许靠行位置。`bcTag.priority` 挂在**当前动作**的窗口上、对同一窗口的所有候选同等加成，所以它区分不了候选之间。两个已知后果：`Doc/issue/walk-action-swallows-attack-input.md`、`Doc/issue/turn-back-is-dead-code.md`。
+- 抢动作打分 = `bcTag.priority + cancelTag.priority + action.priority`，**平手取表数组里靠前的那条**（`ActionTableAsset.actions[]` 的顺序，`ActionController` 用严格 `>`）：新增行一律追加末尾，"最弱候选"（纵深走位就是）用负 `action.priority` 定死，不许靠行位置。`bcTag.priority` 挂在**当前动作**的窗口上、对同一窗口的所有候选同等加成，所以它区分不了候选之间。两个已知后果：`Doc/issue/walk-action-swallows-attack-input.md`、`Doc/issue/turn-back-is-dead-code.md`。
 - `GameData.ActionsOfCatalog` 的倒排索引是对整张动作表建的，前提是所有角色共用同一份表（`GameMain` 把 `AllActions()` 的同一个 List 交给每个 `ActionController`）。角色一旦有了自己的动作子集，索引必须下移到 `ActionController`。
 
 ## 性能验证

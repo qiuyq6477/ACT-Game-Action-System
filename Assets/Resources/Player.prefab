@@ -257,6 +257,7 @@ GameObject:
   - component: {fileID: 313157516151252519}
   - component: {fileID: 4542230007314738389}
   - component: {fileID: 8826233745300489445}
+  - component: {fileID: 989676259238055534}
   m_Layer: 0
   m_Name: RightHandAttackBox
   m_TagString: Untagged
@@ -317,6 +318,21 @@ MonoBehaviour:
   master: {fileID: 0}
   damageRate: 1
   basePriority: 0
+--- !u!114 &989676259238055534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 96338703013106880}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: RightPunch
+  size: {x: 0.6, y: 0.6, z: 0.6}
+  offset: {x: 0, y: 0, z: 0}
 --- !u!1 &233444313728017195
 GameObject:
   m_ObjectHideFlags: 0
@@ -360,6 +376,7 @@ GameObject:
   - component: {fileID: 7312143387673562628}
   - component: {fileID: 7977951913572537530}
   - component: {fileID: 4174231911665078745}
+  - component: {fileID: 6371783435179665638}
   m_Layer: 0
   m_Name: BeHitBox_Body
   m_TagString: Untagged
@@ -449,6 +466,21 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &6371783435179665638
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 247409650159351197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: Hurt
+  size: {x: 0.6, y: 1.6, z: 0.6}
+  offset: {x: 0, y: 1, z: 0}
 --- !u!1 &687214278521316312
 GameObject:
   m_ObjectHideFlags: 0
@@ -460,6 +492,7 @@ GameObject:
   - component: {fileID: 7908955555283254566}
   - component: {fileID: 5982014170595365802}
   - component: {fileID: 5765852519505531130}
+  - component: {fileID: 302522479410133895}
   m_Layer: 0
   m_Name: LeftHandAttackBox
   m_TagString: Untagged
@@ -520,6 +553,21 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.3
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &302522479410133895
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 687214278521316312}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: LeftPunch
+  size: {x: 0.6, y: 0.6, z: 0.6}
+  offset: {x: 0, y: 0, z: 0}
 --- !u!1 &1480742650801774936
 GameObject:
   m_ObjectHideFlags: 0
@@ -564,6 +612,7 @@ GameObject:
   - component: {fileID: 3596119740742134280}
   - component: {fileID: 4803500203585823543}
   - component: {fileID: 4542144083248490041}
+  - component: {fileID: 7942853489640685712}
   m_Layer: 0
   m_Name: BeHitBox_Parry
   m_TagString: Untagged
@@ -653,6 +702,21 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &7942853489640685712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1513387194537603580}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: Parry
+  size: {x: 1, y: 1.8, z: 1}
+  offset: {x: 0, y: 1, z: 0}
 --- !u!1 &1608491293976504266
 GameObject:
   m_ObjectHideFlags: 0
@@ -1433,6 +1497,8 @@ MonoBehaviour:
   groundProbeRadius: 0.3
   groundSnapTolerance: 0.02
   moveSpeed: 4
+  depthSpeedRate: 0.8
+  laneRadius: 0.3
 --- !u!114 &5251258270997115436
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1745,6 +1811,7 @@ GameObject:
   - component: {fileID: 7802504914072086155}
   - component: {fileID: 8119649618403145362}
   - component: {fileID: 5291164252216012674}
+  - component: {fileID: 7601244477291040299}
   m_Layer: 0
   m_Name: RightFootAttackBox
   m_TagString: Untagged
@@ -1805,6 +1872,21 @@ MonoBehaviour:
   master: {fileID: 0}
   damageRate: 1
   basePriority: 0
+--- !u!114 &7601244477291040299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6992404188341286798}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: RightKick
+  size: {x: 0.6, y: 0.6, z: 0.6}
+  offset: {x: 0, y: 0, z: 0}
 --- !u!1 &7058123574460538905
 GameObject:
   m_ObjectHideFlags: 0
@@ -1939,6 +2021,7 @@ GameObject:
   - component: {fileID: 1897576352684655088}
   - component: {fileID: 1128470662788669628}
   - component: {fileID: 8379338337403293802}
+  - component: {fileID: 6958616503787087041}
   m_Layer: 0
   m_Name: LeftFootAttackBox
   m_TagString: Untagged
@@ -1999,6 +2082,21 @@ MonoBehaviour:
   master: {fileID: 0}
   damageRate: 1
   basePriority: 0
+--- !u!114 &6958616503787087041
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7115633738462210063}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1295853b7b444be98d95bc80a025423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.UnitActionBox
+  trackTag: LeftKick
+  size: {x: 0.6, y: 0.6, z: 0.6}
+  offset: {x: 0, y: 0, z: 0}
 --- !u!1 &7246349043200555299
 GameObject:
   m_ObjectHideFlags: 0

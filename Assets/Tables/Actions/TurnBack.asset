@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d1ced8441e5ec426ebc91ad9b948380f, type: 3}
+  m_Name: TurnBack
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.ActionAsset
+  id: TurnBack
+  animKey: BoxingBackward
+  catalog: Stand
+  duration: 0.8000001
+  priority: 0
+  autoNextActionId: BoxingStand
+  keepPlayingAnim: 0
+  cancelTags:
+  - tag: TurnBack
+    startFrom: 0
+    priority: 0
+    fadeInFrames: 2
+  beCancelledTags:
+  - windowMin: 0
+    windowMax: 0.8000001
+    cancelTag:
+    - InitAction
+    priority: 0
+    fadeOutFrames: 2
+  tempBeCancelledTags: []
+  inputAcceptance: []
+  inputSequence:
+  - Left
+  attackBoxes: []
+  hitBoxes:
+  - tag: Hurt
+    openMin: 0
+    openMax: 0.8000001
+    priority: 0
+    tempBeCancelledTagTurnOn: []
+    attackerActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    selfActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    keys: []
+  inputValidSec: 0
+  autoTerminate: 0
+  flip: 1
+  rootMotionTween:
+    method: 
+    param: []
+  attacks: []
+  "\u8BF4\u660E":
+  - "\u4E13\u95E8\u7684\u8F6C\u8EAB\u52A8\u4F5C\uFF0C\u8FD9\u4E2A\u6E38\u620F\u4E2D\uFF0C\u6211\u4EEC\u8BA9\u89D2\u8272\u4F1A\u5012\u9000\u4E00\u6BB5\u8DDD\u79BB\u7136\u540E\u624D\u8F6C\u8EAB"

@@ -18,7 +18,7 @@
 | 相机 | 正交（`orthographic: 1`、size 2.5 —— 2026-10-13 从透视改的，理由见 `../decision/0002` 的"修订"） | 正交 + `PixelPerfectCamera` |
 | 世界轴 | X 横向、**Y 高度**（重力与地面探测）、Z 纵深 | X 横向、**Y 纵深车道**、跳跃高度是"贴图飞起来"再靠 `CapsuleCollider2D.offset.y` 把碰撞体拽回地面 |
 | 时基 | 自建 60Hz 整型逻辑帧时钟，Animator 是被时钟奴役的从属 | Unity 的 `Update/FixedUpdate` + `Time.time` + 协程 + `Time.timeScale` 慢镜头 |
-| 招式数据 | `Resources/GameData/Action.json` 一张表，窗口存绝对帧号 | 预制体内联的 `AttackData` + **画在 `.anim` 曲线里的命中帧** + 6 个动画事件 |
+| 招式数据 | 一张表（2026-10 起真源是 `ActionTable.asset`，见 `action-editor.md`），窗口存绝对帧号 | 预制体内联的 `AttackData` + **画在 `.anim` 曲线里的命中帧** + 6 个动画事件 |
 | 规模 | — | 82 个 .cs / 约 4900 行、41 条 .anim、36 个预制体、12 个场景、88 张 PNG、31 个 WAV |
 
 管线与版本都不是障碍，**障碍在下面四条冲突**。

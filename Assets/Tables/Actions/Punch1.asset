@@ -1,0 +1,96 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d1ced8441e5ec426ebc91ad9b948380f, type: 3}
+  m_Name: Punch1
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.ActionAsset
+  id: Punch1
+  animKey: Punch1
+  catalog: Punch
+  duration: 0.20000002
+  priority: 0
+  autoNextActionId: BoxingStand
+  keepPlayingAnim: 0
+  cancelTags:
+  - tag: InitAction
+    startFrom: 0
+    priority: 0
+    fadeInFrames: 1
+  beCancelledTags: []
+  tempBeCancelledTags:
+  - id: PunchCombo1
+    duration: 0.033333335
+    cancelTag:
+    - Punch2
+    priority: 0
+    fadeOutFrames: 1
+  inputAcceptance: []
+  inputSequence:
+  - Button1
+  attackBoxes:
+  - tag: LeftPunch
+    openMin: 0.06666667
+    openMax: 0.083333336
+    priority: 0
+    ruleIndex: 0
+    keys: []
+  hitBoxes:
+  - tag: Hurt
+    openMin: 0
+    openMax: 0.20000002
+    priority: 0
+    tempBeCancelledTagTurnOn: []
+    attackerActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    selfActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    keys: []
+  inputValidSec: 0.050000004
+  autoTerminate: 0
+  flip: 0
+  rootMotionTween:
+    method: 
+    param: []
+  attacks:
+  - phase: 0
+    attack: 0.3
+    forceDir: 0
+    pushPower:
+      moveDistance: {x: 0.1, y: 0, z: 0}
+      inFrames: 5
+      tweenMethod: Slowly
+    hitStunFrames: 7
+    freezeFrames: 3
+    canHitSameTarget: 1
+    hitSameTargetDelayFrames: 60
+    selfActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    targetActionChange:
+      changeType: 2
+      param: Hurt
+      priority: 5
+      fromFrame: 0
+      transFrames: 0
+    tempBeCancelledTagTurnOn:
+    - PunchCombo1
+  "\u8BF4\u660E": []

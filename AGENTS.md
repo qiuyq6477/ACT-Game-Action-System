@@ -31,3 +31,4 @@
 ## Module Index
 
 - `Assets/Scripts/AGENTS.md` — 动作系统逻辑脚本（角色 / 动作控制器 / 判定盒 / 表函数）：热路径 0 分配、表数据在 `GameData.Load` 里烘焙、box tag 位掩码规则、`GcProbe` 验证方式、逻辑时钟的单位法则（时长一律 int 逻辑帧，Animator 只是从属）。配套的常驻工具在 `Assets/Editor/`：`Tools/ACT/打印动作时长` 校对表里的 `durationFrames` 与窗口，`ActionFrameClockTests.cs` 是改时钟/窗口后必跑的 EditMode 用例。
+- `Assets/Tables/AGENTS.md` — 动作表的**真源**（`ActionTableAsset` + `Assets/Tables/Actions/*.asset`）与它到逻辑层 `ActionInfo` 之间唯一的换算处 `ActionAssetConvert.ToInfo`：一个资产里秒与 int 帧两种单位并存、帧长只认 `LogicClock.Tick`、容器数组顺序就是抢动作平手的 tie-break、`UnitActionBox.trackTag` 与表里的 tag 必须逐字相同。`Assets/Tables/Snapshot/Action.json` 只是**从资产导出的只读快照**（运行期不读它，改完资产跑 `Tools/ACT/动作表资产 → 导出 JSON 快照`）。配表用的区间编辑器菜单是 `Combat Framework/Action Timeline`，转换器与对拍在 `Tools/ACT/动作表 …` 三个菜单里；窗口、烘培、已知限制与"改完跑哪些用例"见 `Doc/plan/action-editor.md`。

@@ -3,6 +3,7 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using CombatFramework;
 
 /// <summary>
 /// 解决的问题：Phase 2 第3步把表里所有"该动作的百分之多少"换成了绝对逻辑帧，
@@ -16,7 +17,6 @@ using UnityEngine;
 public static class ActionDurationDumper
 {
     private const string PrefabPath = "Assets/Resources/Player.prefab";
-    private const string TablePath = "Assets/Resources/GameData/Action.json";
 
     [MenuItem("Tools/ACT/打印动作时长（填 durationFrames 用）")]
     public static void Dump()
@@ -26,22 +26,26 @@ public static class ActionDurationDumper
 
         Dictionary<string, float> seconds = StateLengths(controller);
 
-        TextAsset table = AssetDatabase.LoadAssetAtPath<TextAsset>(TablePath);
-        if (!table)
+        // 表的真源是 ActionTableAsset。
+        // 这里读的是资产换算之后的**整数帧**，与运行期 GameData.Load 拿到的是同一份数——
+        // 校对的是运行期真正会用的值，而不是资产里那个带小数点的秒。
+        ActionTableAsset table = AssetDatabase.LoadAssetAtPath<ActionTableAsset>(ActionTableConverter.ContainerPath);
+        if (!table || table.actions == null)
         {
-            Debug.LogError("找不到 " + TablePath);
+            Debug.LogError("找不到 " + ActionTableConverter.ContainerPath
+                + "（跑一次菜单 Tools/ACT/动作表 JSON → 资产）");
             return;
         }
-
-        ActionInfoContainer container = JsonUtility.FromJson<ActionInfoContainer>(table.text);
+        List<ActionInfo> rows = new List<ActionInfo>(table.actions.Length);
+        foreach (ActionAsset asset in table.actions)
+            if (asset) rows.Add(ActionAssetConvert.ToInfo(asset));
 
         StringBuilder sb = new StringBuilder();
         sb.Append("动作时长（逻辑帧 = 秒 x 60，一个逻辑帧 ").Append(LogicClock.Tick.ToString("0.0000000")).Append(" 秒）\n");
         List<string> paste = new List<string>();
-        foreach (ActionInfo info in container.data)
+        foreach (ActionInfo info in rows)
         {
             if (string.IsNullOrEmpty(info.id)) continue;
-
             float sec;
             if (!seconds.TryGetValue(info.animKey, out sec))
             {

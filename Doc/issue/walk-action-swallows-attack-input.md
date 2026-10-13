@@ -12,7 +12,7 @@
 1. 走位动作靠"自己取消自己"来保持连贯。`BoxingMoveForward.commands = [{[6]}]`，只要还按着 →，它每一拍都作为候选出现（`ActionController.Tick` 在 :176-184 扫全表问"谁能取消当前动作"）。
 2. 攻击动作同样是候选。`Punch1.commands = [{[100]}]`，它的 `cancelTag.tag` 是 `InitAction`，而 `BoxingMoveForward.beCancelledTag` 唯一的窗口声明的也正是 `InitAction` ⇒ 两个都合格。
 3. 打分公式是 `bcTag.priority + cancelTag.priority + action.priority`。两边命中的是**同一个** `bcTag`（那个 `priority: 1` 的窗口，对所有候选同等加成，所以它区分不了候选之间）、`cancelTag.priority` 都没填、`action.priority` 都是 0 ⇒ **完全同分**。
-4. 同分时 `ActionController.cs:197-205` 用的是严格 `>`，留下的是先加入的那一个，而加入顺序就是 `Action.json` 的数组顺序 ⇒ `BoxingMoveForward`（第 2 行）永远赢 `Punch1`（第 9 行）。
+4. 同分时 `ActionController.cs:197-205` 用的是严格 `>`，留下的是先加入的那一个，而加入顺序就是表容器 `ActionTableAsset.actions[]` 的顺序（等于快照 `Assets/Tables/Snapshot/Action.json` 的行序）⇒ `BoxingMoveForward`（第 2 行）永远赢 `Punch1`（第 9 行）。
 5. 赢家恰好是当前动作本身，于是走 `keepPlayingAnim` 的 `KeepAction()`：动作不换、`ChangeAction` 根本不执行，那一拍的拳就被丢了。
 
 ## 要修该怎么修，以及为什么这次没修

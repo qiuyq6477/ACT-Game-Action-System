@@ -12,3 +12,4 @@
 | [按键采样率受渲染帧限制](input-sample-rate-render-frame.md) | 旧 Input 每渲染帧只 poll 一次，两次 poll 之间按完松开的键从来没被看到过 | 连招手感"偶尔差一帧"的唯一来源，表里 `validInFrames` 留余量就是在兜它 | 未处理（建议与输入改造一起做） |
 | [走位动作吃掉拳脚输入](walk-action-swallows-attack-input.md) | 按住 → 或 ← 时按拳按脚完全没反应，松开方向键才打得出来 | "边走边打"这条清版游戏的核心手感今天不成立 | 未处理（连招那轮一起定攻击行的 priority） |
 | [TurnBack 抢不到动作](turn-back-is-dead-code.md) | 后退多久都不转身，`inversed` 一次运行里恒为 false | 输入镜像、横向位移符号、受力翻转三处逻辑全都没被跑到过 | 未处理（要单独一轮，动它等于第一次真让角色转身） |
+| [判定盒烘培不支持 2D 精灵](sprite-box-mirroring-deferred.md) | `FacingApply.SpriteScaleX` 是反射不是旋转，烘出来的局部位姿只会"不镜像"那一种 | 角色反手时预览与线框的盒留在错误一侧；工程里今天没有精灵角色，运行期判定不受影响 | 未处理（修法分三步，见文） |

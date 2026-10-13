@@ -1,0 +1,84 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d1ced8441e5ec426ebc91ad9b948380f, type: 3}
+  m_Name: TwinKickAutoCombo
+  m_EditorClassIdentifier: Assembly-CSharp::CombatFramework.ActionAsset
+  id: TwinKickAutoCombo
+  animKey: TwinKick2
+  catalog: Skill
+  duration: 0.70000005
+  priority: 2
+  autoNextActionId: BoxingStand
+  keepPlayingAnim: 0
+  cancelTags: []
+  beCancelledTags: []
+  tempBeCancelledTags: []
+  inputAcceptance: []
+  inputSequence: []
+  attackBoxes:
+  - tag: LeftKick
+    openMin: 0.26666668
+    openMax: 0.35000002
+    priority: 0
+    ruleIndex: 0
+    keys: []
+  hitBoxes:
+  - tag: Hurt
+    openMin: 0
+    openMax: 0.70000005
+    priority: 0
+    tempBeCancelledTagTurnOn: []
+    attackerActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    selfActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    keys: []
+  inputValidSec: 0
+  autoTerminate: 0
+  flip: 0
+  rootMotionTween:
+    method: 
+    param: []
+  attacks:
+  - phase: 0
+    attack: 0.6
+    forceDir: 0
+    pushPower:
+      moveDistance: {x: 0.7, y: 0, z: 0}
+      inFrames: 16
+      tweenMethod: Slowly
+    hitStunFrames: 7
+    freezeFrames: 3
+    canHitSameTarget: 1
+    hitSameTargetDelayFrames: 60
+    selfActionChange:
+      changeType: 0
+      param: 
+      priority: 0
+      fromFrame: 0
+      transFrames: 0
+    targetActionChange:
+      changeType: 2
+      param: Beaten
+      priority: 5
+      fromFrame: 0
+      transFrames: 0
+    tempBeCancelledTagTurnOn: []
+  "\u8BF4\u660E": []
